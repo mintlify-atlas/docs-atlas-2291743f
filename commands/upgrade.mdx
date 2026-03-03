@@ -1,0 +1,156 @@
+---
+title: erst simulate-upgrade
+description: Simulate a transaction with upgraded contract code
+---
+
+The `simulate-upgrade` command replays a transaction with new contract code to verify if a planned upgrade will break existing functionality.
+
+## Usage
+
+```bash
+erst simulate-upgrade <transaction-hash> --new-wasm <path>
+```
+
+## Description
+
+This command:
+- Fetches an existing transaction from the network
+- Replaces the contract code with your new WASM file
+- Re-simulates the transaction execution
+- Reports any behavioral changes or failures
+
+This allows you to test contract upgrades before deploying them to the network.
+
+## Examples
+
+<CodeGroup>
+```bash Basic upgrade simulation
+erst simulate-upgrade 5c0a3f2b8e7d... --new-wasm ./contract_v2.wasm
+```
+
+```bash With optimization
+erst simulate-upgrade 5c0a3f2b8e7d... --new-wasm ./contract_v2.wasm --optimize
+```
+
+```bash On specific network
+erst simulate-upgrade 5c0a3f2b8e7d... --new-wasm ./contract_v2.wasm --network mainnet
+```
+</CodeGroup>
+
+## Flags
+
+<ParamField path="--new-wasm" type="string" required>
+  Path to the new WASM file to test
+</ParamField>
+
+<ParamField path="--optimize" type="boolean" default="false">
+  Run dead-code elimination on the WASM before simulation
+</ParamField>
+
+<ParamField path="--network" type="string" default="mainnet">
+  Network to fetch transaction from: `testnet`, `mainnet`, or `futurenet`
+</ParamField>
+
+<ParamField path="--rpc-url" type="string">
+  Custom Soroban RPC URL (overrides default for network)
+</ParamField>
+
+## Workflow
+
+<Steps>
+  <Step title="Fetch original transaction">
+    Downloads the transaction envelope and ledger state from the network
+  </Step>
+  
+  <Step title="Load new WASM">
+    Reads and optionally optimizes your new contract code
+  </Step>
+  
+  <Step title="Replace contract code">
+    Substitutes the old contract WASM with your new version
+  </Step>
+  
+  <Step title="Simulate execution">
+    Re-runs the transaction with the new code
+  </Step>
+  
+  <Step title="Compare results">
+    Shows differences in events, budget usage, and outcomes
+  </Step>
+</Steps>
+
+## Understanding the output
+
+The simulation output shows:
+
+```text
+Fetching transaction: 5c0a3f2b8e7d... from mainnet
+Loaded new WASM code: 45320 bytes
+
+Original execution:
+  CPU instructions: 1,245,678
+  Memory bytes: 2,345,678
+  Events: 12
+  Status: Success
+
+Simulated with new WASM:
+  CPU instructions: 1,298,432 (+52,754)
+  Memory bytes: 2,456,789 (+111,111)
+  Events: 12
+  Status: Success
+
+✓ Upgrade compatible - no breaking changes detected
+```
+
+<Warning>
+If the simulation fails or produces different events, review the changes carefully before deploying the upgrade.
+</Warning>
+
+## Common use cases
+
+<Accordion title="Testing bug fixes">
+Verify that your bug fix resolves the issue without changing behavior for other transactions:
+
+```bash
+# Simulate the failing transaction with the fix
+erst simulate-upgrade <failing-tx-hash> --new-wasm ./fixed_contract.wasm
+```
+</Accordion>
+
+<Accordion title="Performance improvements">
+Measure the performance impact of optimizations:
+
+```bash
+# Compare CPU/memory usage
+erst simulate-upgrade <tx-hash> --new-wasm ./optimized.wasm
+```
+</Accordion>
+
+<Accordion title="Breaking change detection">
+Ensure API changes don't break existing callers:
+
+```bash
+# Test against real production transactions
+erst simulate-upgrade <prod-tx-hash> --new-wasm ./v2.wasm --network mainnet
+```
+</Accordion>
+
+## Best practices
+
+<Note>
+**Test multiple transactions**: Don't rely on a single transaction. Test your upgrade against a variety of real transactions to catch edge cases.
+</Note>
+
+<Info>
+**Use optimization**: Always test with `--optimize` to ensure the deployed WASM will behave the same as your simulation.
+</Info>
+
+<Tip>
+**Automate testing**: Integrate `simulate-upgrade` into your CI/CD pipeline to catch breaking changes before deployment.
+</Tip>
+
+## Related commands
+
+- [compare](/commands/compare) - Compare local vs on-chain execution side-by-side
+- [init](/commands/init) - Initialize Erst workspace for testing
+- [doctor](/commands/doctor) - Verify environment setup

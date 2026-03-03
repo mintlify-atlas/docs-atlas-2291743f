@@ -1,0 +1,123 @@
+---
+title: erst init
+description: Scaffold a local Erst debugging workspace
+---
+
+The `init` command creates project-local scaffolding for Erst debugging workflows.
+
+## Usage
+
+```bash
+erst init [directory]
+```
+
+## Description
+
+This command generates:
+- `erst.toml` configuration file
+- `.gitignore` entries for local artifacts
+- Directory structure for traces, snapshots, overrides, and WASM files
+
+When run in an interactive terminal, it launches a setup wizard to configure the preferred RPC URL and network passphrase.
+
+## Examples
+
+<CodeGroup>
+```bash Initialize in current directory
+erst init
+```
+
+```bash Initialize in specific directory
+erst init ./my-project
+```
+
+```bash Non-interactive with specific network
+erst init --network testnet --rpc https://soroban-testnet.stellar.org
+```
+</CodeGroup>
+
+## Flags
+
+<ParamField path="--force" type="boolean" default="false">
+  Overwrite existing configuration files
+</ParamField>
+
+<ParamField path="--network" type="string" default="public">
+  Network to configure: `public`, `testnet`, `futurenet`, or `standalone`
+</ParamField>
+
+<ParamField path="--rpc" type="string">
+  Custom RPC URL to use
+</ParamField>
+
+<ParamField path="--network-passphrase" type="string">
+  Custom network passphrase
+</ParamField>
+
+<ParamField path="--interactive" type="boolean" default="true">
+  Run interactive setup wizard (auto-detects terminal)
+  
+  Alias: `-i`
+</ParamField>
+
+## Interactive wizard
+
+When run in an interactive terminal, `erst init` launches a setup wizard that guides you through:
+
+<Steps>
+  <Step title="Select network">
+    Choose from public, testnet, futurenet, or standalone
+  </Step>
+  
+  <Step title="Configure RPC URL">
+    Enter custom RPC endpoint or use network defaults
+  </Step>
+  
+  <Step title="Set network passphrase">
+    Optionally specify custom network passphrase
+  </Step>
+  
+  <Step title="Confirm settings">
+    Review and confirm configuration before creating files
+  </Step>
+</Steps>
+
+## Generated structure
+
+After running `erst init`, your project will contain:
+
+```
+.
+├── erst.toml           # Main configuration file
+├── .gitignore          # Updated with erst artifacts
+└── .erst/
+    ├── traces/         # Saved execution traces
+    ├── snapshots/      # Ledger state snapshots
+    ├── overrides/      # Custom state overrides
+    └── wasm/           # Local contract WASM files
+```
+
+## Configuration file
+
+The generated `erst.toml` includes:
+
+```toml
+# Network configuration
+network = "testnet"
+rpc_url = "https://soroban-testnet.stellar.org"
+
+# Simulator settings
+[simulator]
+max_cpu_insns = 100000000
+max_memory_bytes = 41943040
+
+# Cache settings
+[cache]
+enabled = true
+max_size_mb = 500
+```
+
+## Related commands
+
+- [doctor](/commands/doctor) - Verify Erst environment setup
+- [upgrade](/commands/upgrade) - Simulate contract upgrades
