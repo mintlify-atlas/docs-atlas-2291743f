@@ -1,0 +1,128 @@
+{
+  "projectType": "cli-tool",
+  "projectName": "Erst",
+  "projectDescription": "A CLI tool for debugging Stellar Soroban smart contracts with detailed stack traces and transaction replay.",
+  "theme": "aspen",
+  "primaryColor": "#3B82F6",
+  "lightColor": "#60A5FA",
+  "darkColor": "#1E40AF",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "installation",
+              "quickstart"
+            ]
+          },
+          {
+            "group": "Core Features",
+            "pages": [
+              "features/transaction-debugging",
+              "features/interactive-trace-viewer",
+              "features/performance-profiling",
+              "features/source-mapping",
+              "features/offline-analysis"
+            ]
+          },
+          {
+            "group": "Guides",
+            "pages": [
+              "guides/debugging-failed-transactions",
+              "guides/using-flamegraphs",
+              "guides/working-with-sessions",
+              "guides/cache-management",
+              "guides/local-wasm-replay",
+              "guides/audit-log-signing"
+            ]
+          },
+          {
+            "group": "Configuration",
+            "pages": [
+              "configuration/overview",
+              "configuration/environment-variables",
+              "configuration/custom-networks",
+              "configuration/error-suggestions"
+            ]
+          },
+          {
+            "group": "Advanced",
+            "pages": [
+              "advanced/architecture",
+              "advanced/hsm-integration",
+              "advanced/metrics-prometheus",
+              "advanced/opentelemetry",
+              "advanced/troubleshooting"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Command Reference",
+        "groups": [
+          {
+            "group": "Commands",
+            "pages": [
+              "commands/overview",
+              "commands/debug",
+              "commands/trace",
+              "commands/profile",
+              "commands/session",
+              "commands/cache",
+              "commands/audit",
+              "commands/doctor",
+              "commands/compare",
+              "commands/export"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Development",
+        "groups": [
+          {
+            "group": "Contributing",
+            "pages": [
+              "contributing/overview",
+              "contributing/code-standards",
+              "contributing/testing",
+              "contributing/development-workflow"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Debug failed Soroban transactions with detailed error traces",
+    "Interactive trace viewer with search and navigation",
+    "Performance profiling with interactive flamegraphs",
+    "Source code mapping from WASM to Rust",
+    "Local transaction replay and simulation",
+    "Offline analysis with caching",
+    "Session management for complex workflows",
+    "Audit log signing with HSM support",
+    "Error suggestions and heuristics",
+    "GitHub source code linking"
+  ],
+  "publicApiSurface": [
+    "erst debug <transaction-hash>",
+    "erst debug --interactive",
+    "erst debug --profile",
+    "erst trace <transaction-hash>",
+    "erst session list",
+    "erst session save",
+    "erst cache status",
+    "erst cache clear",
+    "erst audit:sign",
+    "erst doctor",
+    "erst compare",
+    "erst export",
+    "erst init",
+    "erst upgrade"
+  ]
+}
