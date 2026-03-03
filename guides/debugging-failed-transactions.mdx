@@ -1,0 +1,301 @@
+---
+title: Debugging failed transactions
+description: Learn how to debug failed Stellar Soroban transactions using Erst's comprehensive debugging tools
+---
+
+Erst is designed to solve the "black box" debugging experience on Soroban by helping you understand why a transaction failed. This guide walks you through the complete debugging workflow.
+
+## Quick start
+
+Debug a failed transaction from any Stellar network:
+
+```bash
+erst debug <transaction-hash> --network testnet
+```
+
+<Info>
+By default, Erst fetches transaction data from mainnet. Use `--network` to specify testnet or other networks.
+</Info>
+
+## Understanding transaction failures
+
+When a Soroban transaction fails on mainnet, you typically receive a generic XDR error code. Erst bridges the gap between this opaque network error and your source code by:
+
+<Steps>
+
+### Fetching transaction data
+
+Erst uses the Stellar RPC to retrieve:
+- Transaction envelope (the complete transaction)
+- Ledger footprint (read/write set for the block)
+- Result metadata (execution results)
+
+### Local simulation
+
+The transaction is re-executed locally using the `erst-sim` Rust binary that integrates with `soroban-env-host`.
+
+### Trace decoding
+
+Execution steps and failures are mapped back to readable instructions and source code lines (when debug symbols are available).
+
+</Steps>
+
+## Interactive trace viewer
+
+Launch an interactive terminal UI to explore transaction execution traces:
+
+```bash
+erst debug <transaction-hash> --interactive
+# or short form
+erst debug <transaction-hash> -i
+```
+
+### Key features
+
+<Accordion title="Search functionality">
+- Press `/` to search through traces
+- Search across contract IDs, functions, errors, and events
+- Case-insensitive by default
+- Highlights all matches in yellow
+- Current match highlighted in green
+- Shows "Match X of Y" status
+- Jump between matches with `n` (next) and `N` (previous)
+</Accordion>
+
+<Accordion title="Tree navigation">
+- Expand/collapse nodes with Enter or Space
+- Navigate with arrow keys or vim-style `j`/`k`
+- Expand all nodes with `e`
+- Collapse all nodes with `c`
+- Jump to start with `Home` or `g`
+- Jump to end with `End` or `G`
+- Page up/down with `PgUp`/`PgDn`
+</Accordion>
+
+<Accordion title="Visual styling">
+- Color-coded elements:
+  - Contract IDs in cyan
+  - Function names in blue
+  - Errors in red
+  - Search matches in yellow
+- Depth indentation for clear hierarchy
+- Visual indicators for expanded (v) and collapsed (>) nodes
+</Accordion>
+
+### Keyboard shortcuts
+
+```text
+Navigation:
+  ↑/k         Move up
+  ↓/j         Move down
+  PgUp        Scroll up one page
+  PgDn        Scroll down one page
+  Home/g      Jump to start
+  End/G       Jump to end
+  Enter/Space Toggle expand/collapse
+
+Search:
+  /           Start search
+  Enter       Execute search
+  n           Next match
+  N           Previous match
+  ESC         Clear search
+
+Tree:
+  e           Expand all nodes
+  c           Collapse all nodes
+
+Other:
+  ?/h         Show help
+  q/Ctrl+C    Quit viewer
+```
+
+## Debugging offline
+
+Debug a transaction envelope from stdin without RPC access:
+
+```bash
+erst debug < tx.xdr
+```
+
+This is useful when:
+- Working with pre-downloaded transaction data
+- Debugging in air-gapped environments
+- Testing with custom transaction envelopes
+
+## Common debugging workflows
+
+### Search for specific errors
+
+<Steps>
+
+### Launch interactive viewer
+
+```bash
+erst debug abc123...def --interactive
+```
+
+### Press `/` to start search
+
+Type your search term, such as:
+- `insufficient` - Find balance/permission errors
+- `not found` - Locate missing data errors
+- Contract ID prefix - Find specific contract calls
+
+### Navigate matches
+
+Use `n` and `N` to jump between all occurrences of your search term.
+
+</Steps>
+
+### Trace execution flow
+
+<Steps>
+
+### Start with collapsed view
+
+Press `c` to collapse all nodes for a high-level overview.
+
+### Expand interesting branches
+
+Navigate to a node and press Enter to see its children.
+
+### Follow the call chain
+
+Expand nodes progressively to understand the execution path.
+
+</Steps>
+
+### Find contract interactions
+
+<Steps>
+
+### Search for contract ID
+
+Press `/` and type the first few characters of a contract address:
+```
+CDLZFC3
+```
+
+### Review all calls
+
+Use `n` to jump through every interaction with that contract.
+
+### Expand for details
+
+Press Enter on matches to see function arguments and results.
+
+</Steps>
+
+## Source mapping
+
+<Note>
+To map WASM instruction failures to Rust source code lines, you need to compile your contracts with debug symbols enabled.
+</Note>
+
+When debug symbols are available, Erst can:
+- Show which Rust source line caused a failure
+- Generate GitHub links to source code locations
+- Provide more context about execution state
+
+See the [Source Mapping](/features/source-mapping) feature for setup instructions.
+
+## Error suggestions
+
+Erst includes a heuristic-based engine that suggests potential fixes for common Soroban errors:
+
+```bash
+erst debug abc123...def
+```
+
+If a known error pattern is detected, you'll see suggestions like:
+
+```text
+[ERROR] InsufficientBalance
+
+💡 Suggestions:
+  • Check that the source account has sufficient funds
+  • Verify the token contract has approved the transfer
+  • Ensure the amount doesn't exceed the available balance
+```
+
+## Performance considerations
+
+### Caching
+
+Erst automatically caches transaction data to improve performance:
+
+```bash
+# Check cache status
+erst cache status
+
+# Clean old entries
+erst cache clean
+```
+
+Cached data enables:
+- Faster repeated debugging of the same transaction
+- Offline analysis after initial fetch
+- Reduced load on RPC endpoints
+
+### Network timeout
+
+For slow or unreliable networks, increase the timeout:
+
+```bash
+export ERST_RPC_TIMEOUT=60
+erst debug <transaction-hash>
+```
+
+## Troubleshooting
+
+### Transaction not found
+
+```text
+Error: transaction not found on network
+```
+
+**Solutions:**
+- Verify the transaction hash is correct
+- Check you're using the right network (`--network testnet`)
+- Ensure the transaction exists on the specified network
+- Try a different RPC endpoint if available
+
+### XDR decode error
+
+```text
+Error: failed to decode XDR
+```
+
+**Solutions:**
+- Check that the XDR format is correct
+- Verify you're not mixing testnet and mainnet data
+- Ensure the XDR isn't truncated or corrupted
+
+### Empty trace output
+
+```text
+No trace data available
+```
+
+**Solutions:**
+- Transaction may have failed before execution started
+- Check that diagnostic events are enabled on your RPC
+- Try debugging with `--verbose` for more details
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Using flamegraphs" icon="chart-line" href="/guides/using-flamegraphs">
+    Profile CPU and memory usage during contract execution
+  </Card>
+  <Card title="Working with sessions" icon="floppy-disk" href="/guides/working-with-sessions">
+    Save and resume debugging sessions
+  </Card>
+  <Card title="Local WASM replay" icon="microchip" href="/guides/local-wasm-replay">
+    Test contracts locally without network access
+  </Card>
+  <Card title="Cache management" icon="database" href="/guides/cache-management">
+    Optimize cache usage for faster debugging
+  </Card>
+</CardGroup>

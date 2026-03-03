@@ -1,0 +1,483 @@
+---
+title: Offline analysis
+description: Cache and analyze transactions without network connectivity
+---
+
+Offline analysis enables you to debug and analyze Stellar smart contract transactions without requiring network connectivity. Erst's caching system stores transaction data locally, allowing you to work offline or reduce network requests during repeated analysis.
+
+## How caching works
+
+Erst automatically caches transaction data on your local filesystem:
+
+<Steps>
+  <Step title="First fetch">
+    When you debug a transaction, Erst fetches data from the RPC endpoint and caches it locally.
+  </Step>
+  
+  <Step title="Cache storage">
+    Transaction envelopes, ledger state, and metadata are stored in the cache directory.
+  </Step>
+  
+  <Step title="Subsequent access">
+    Future debug sessions use the cached data automatically, no network required.
+  </Step>
+  
+  <Step title="Automatic cleanup">
+    The cache manager maintains size limits using LRU (Least Recently Used) eviction.
+  </Step>
+</Steps>
+
+## Cache directory location
+
+Erst stores cached data in a platform-specific location:
+
+<Tabs>
+  <Tab title="Linux">
+    ```bash
+    ~/.cache/erst/
+    ```
+  </Tab>
+  
+  <Tab title="macOS">
+    ```bash
+    ~/Library/Caches/erst/
+    ```
+  </Tab>
+  
+  <Tab title="Windows">
+    ```bash
+    %LOCALAPPDATA%\erst\cache\
+    ```
+  </Tab>
+</Tabs>
+
+### Custom cache directory
+
+Override the default location:
+
+```bash
+export ERST_CACHE_DIR=/path/to/custom/cache
+erst debug <transaction-hash> --network testnet
+```
+
+## Debugging offline
+
+### From cached transactions
+
+Once a transaction is cached, debug it without network access:
+
+```bash
+# First time: fetches from network and caches
+erst debug abc123def456 --network testnet
+
+# Subsequent times: uses cache (works offline)
+erst debug abc123def456 --network testnet
+```
+
+<Info>
+Erst automatically detects cached data and uses it when available. No special flags needed.
+</Info>
+
+### From raw XDR files
+
+Debug transactions from XDR envelope files:
+
+```bash
+# From stdin
+erst debug < transaction.xdr
+
+# From file
+cat transaction.xdr | erst debug
+```
+
+This is useful for:
+- Analyzing transaction proposals before submission
+- Debugging transactions from external sources
+- Working with archived transaction data
+- Testing locally simulated transactions
+
+<Note>
+XDR-based debugging may have limited ledger state information compared to network-fetched transactions.
+</Note>
+
+## Cache management
+
+### View cache size
+
+Check current cache usage:
+
+```bash
+erst cache info
+```
+
+Output:
+```
+Cache directory: ~/.cache/erst
+Total size: 347.5 MB
+Files: 1,234
+Oldest entry: 2025-02-15 10:23:45
+Newest entry: 2025-03-03 14:30:12
+```
+
+### List cached transactions
+
+View all cached transaction hashes:
+
+```bash
+erst cache list
+```
+
+Output:
+```
+abc123def456 (245 KB, accessed 2 hours ago)
+fed456cba321 (128 KB, accessed 1 day ago)
+789ghi012jkl (512 KB, accessed 3 days ago)
+...
+```
+
+### Clean the cache
+
+Manually clean old cache entries:
+
+```bash
+erst cache clean
+```
+
+The cleaner uses LRU (Least Recently Used) eviction:
+
+```
+Cache size: 1.2 GB
+Maximum size: 1.0 GB
+
+This will delete the oldest cached files. Continue? (yes/no): yes
+
+Cleaning cache (Least Recently Used files first)...
+
+Cleanup complete!
+Files deleted: 456
+Space freed: 512 MB
+Final cache size: 512 MB
+```
+
+### Force clean without prompt
+
+Automate cache cleaning:
+
+```bash
+erst cache clean --force
+```
+
+<Warning>
+Force cleaning deletes cached data without confirmation. Make sure you have network access to re-fetch if needed.
+</Warning>
+
+## Cache configuration
+
+### Maximum cache size
+
+Configure the cache size limit:
+
+```bash
+export ERST_CACHE_MAX_SIZE=2147483648  # 2 GB in bytes
+```
+
+Default: 1 GB (1,073,741,824 bytes)
+
+### Disable caching
+
+Disable the cache entirely:
+
+```bash
+erst debug <transaction-hash> --no-cache --network testnet
+```
+
+Useful for:
+- Ensuring fresh data from the network
+- Testing cache behavior
+- Debugging cache-related issues
+
+### Clear specific transaction
+
+Remove a specific transaction from cache:
+
+```bash
+erst cache delete <transaction-hash>
+```
+
+## Cache file structure
+
+The cache directory is organized by network and transaction hash:
+
+```
+~/.cache/erst/
+├── testnet/
+│   ├── abc123def456/
+│   │   ├── envelope.xdr
+│   │   ├── result_meta.xdr
+│   │   ├── ledger_entries.json
+│   │   └── metadata.json
+│   └── fed456cba321/
+│       ├── envelope.xdr
+│       └── ...
+├── mainnet/
+│   └── ...
+└── futurenet/
+    └── ...
+```
+
+### Cache file types
+
+| File | Content |
+|------|----------|
+| `envelope.xdr` | Transaction envelope (binary XDR) |
+| `result_meta.xdr` | Transaction result metadata |
+| `ledger_entries.json` | Ledger state snapshot |
+| `metadata.json` | Cache metadata (timestamp, size) |
+
+## Offline workflows
+
+### Development workflow
+
+Work efficiently during development:
+
+<Steps>
+  <Step title="Initial debug with network">
+    Debug your transaction once while online:
+    ```bash
+    erst debug abc123def456 --network testnet
+    ```
+  </Step>
+  
+  <Step title="Work offline">
+    Continue debugging the same transaction offline:
+    ```bash
+    # Works without network, uses cache
+    erst debug abc123def456 --network testnet
+    erst debug abc123def456 --interactive
+    erst debug abc123def456 --profile
+    ```
+  </Step>
+  
+  <Step title="Analyze variants">
+    Use the cached data for different analysis modes without re-fetching.
+  </Step>
+</Steps>
+
+### Team collaboration
+
+Share transaction data with teammates:
+
+<Steps>
+  <Step title="Export cache entry">
+    Zip the cached transaction directory:
+    ```bash
+    cd ~/.cache/erst/testnet
+    tar czf abc123def456.tar.gz abc123def456/
+    ```
+  </Step>
+  
+  <Step title="Share archive">
+    Send the archive to teammates via Slack, email, or shared drive.
+  </Step>
+  
+  <Step title="Import on teammate's machine">
+    Extract to their cache directory:
+    ```bash
+    cd ~/.cache/erst/testnet
+    tar xzf abc123def456.tar.gz
+    ```
+  </Step>
+  
+  <Step title="Debug offline">
+    They can now debug without network access:
+    ```bash
+    erst debug abc123def456 --network testnet
+    ```
+  </Step>
+</Steps>
+
+### CI/CD integration
+
+Use caching in continuous integration:
+
+```yaml .github/workflows/test.yml
+- name: Cache erst transactions
+  uses: actions/cache@v3
+  with:
+    path: ~/.cache/erst
+    key: erst-cache-${{ github.sha }}
+    restore-keys: |
+      erst-cache-
+
+- name: Debug transaction
+  run: erst debug ${{ env.TX_HASH }} --network testnet
+```
+
+Benefits:
+- Faster CI runs (no repeated network fetches)
+- Consistent test data across runs
+- Works even if RPC is temporarily unavailable
+
+## Cache performance
+
+### Cache hit vs miss
+
+**Cache hit** (fast):
+```
+Loading from cache: abc123def456
+Debug session started in 0.1s
+```
+
+**Cache miss** (slower):
+```
+Fetching from network: abc123def456
+Caching transaction data...
+Debug session started in 2.5s
+```
+
+### LRU eviction
+
+The cache manager uses Least Recently Used eviction:
+
+1. **Tracks access time**: Updates timestamp on each cache hit
+2. **Checks size limit**: Compares total cache size to configured maximum
+3. **Sorts by age**: Identifies oldest accessed files first
+4. **Deletes until under limit**: Removes files until cache is 50% of max size
+
+<Info>
+LRU ensures frequently used transactions stay cached while old, unused data is removed automatically.
+</Info>
+
+## Advanced caching
+
+### Pre-warming the cache
+
+Cache multiple transactions in advance:
+
+```bash
+# Cache a set of transactions
+for tx in $(cat transaction_list.txt); do
+  erst debug $tx --network testnet --quiet
+done
+```
+
+Useful for:
+- Preparing for offline work
+- Batch analysis of multiple transactions
+- Demo preparation
+
+### Cache export for archival
+
+Export entire cache for backup:
+
+```bash
+tar czf erst-cache-backup.tar.gz ~/.cache/erst/
+```
+
+Restore from backup:
+
+```bash
+tar xzf erst-cache-backup.tar.gz -C ~/
+```
+
+### Network-specific caching
+
+Caches are separated by network to prevent conflicts:
+
+```bash
+# Cache on testnet
+erst debug abc123 --network testnet
+
+# Cache on mainnet (different data, same hash)
+erst debug abc123 --network mainnet
+```
+
+Both transactions are cached independently under different network directories.
+
+## Troubleshooting
+
+### Cache corruption
+
+If the cache becomes corrupted:
+
+<Steps>
+  <Step title="Clear corrupted cache">
+    ```bash
+    erst cache clean --force
+    ```
+  </Step>
+  
+  <Step title="Or delete manually">
+    ```bash
+    rm -rf ~/.cache/erst/
+    ```
+  </Step>
+  
+  <Step title="Re-fetch transaction">
+    ```bash
+    erst debug <transaction-hash> --network testnet
+    ```
+  </Step>
+</Steps>
+
+### Permission issues
+
+Fix cache directory permissions:
+
+```bash
+chmod -R 755 ~/.cache/erst/
+```
+
+### Disk space issues
+
+Reduce cache size or clean manually:
+
+```bash
+# Set smaller limit
+export ERST_CACHE_MAX_SIZE=536870912  # 512 MB
+
+# Clean to free space
+erst cache clean --force
+```
+
+## Best practices
+
+### Set appropriate size limits
+
+Balance disk space and convenience:
+
+- **Small disk**: 256-512 MB cache
+- **Medium disk**: 1-2 GB cache (default)
+- **Large disk**: 5-10 GB cache for extensive analysis
+
+### Clean periodically
+
+Schedule automatic cache cleaning:
+
+```bash
+# Add to crontab
+0 0 * * 0 erst cache clean --force  # Weekly on Sunday
+```
+
+### Use offline mode for iteration
+
+When debugging repeatedly:
+1. Fetch once with network
+2. Iterate offline with cache
+3. Save RPC bandwidth and time
+
+### Export important transactions
+
+Archive transactions you'll need long-term:
+
+```bash
+# Export before cache cleanup
+mkdir -p ~/erst-archives/
+cp -r ~/.cache/erst/testnet/abc123def456 ~/erst-archives/
+```
+
+## Next steps
+
+- Learn about [Transaction debugging](/features/transaction-debugging) workflows
+- Use the [Interactive trace viewer](/features/interactive-trace-viewer) with cached transactions
+- Generate [Performance profiling](/features/performance-profiling) flamegraphs offline

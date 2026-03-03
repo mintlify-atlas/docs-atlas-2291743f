@@ -1,0 +1,388 @@
+---
+title: Testing
+description: Testing requirements and guidelines for the Erst CLI project
+---
+
+Testing is a critical part of maintaining code quality in the Erst project. All contributions must include appropriate tests.
+
+## Testing requirements
+
+- **Unit tests**: All new functions must have unit tests
+- **Coverage**: Aim for 80%+ coverage. Critical paths should have 90%+ coverage
+- **Integration tests**: Include tests that verify feature interactions
+- **Benchmark tests**: For performance-critical code, include benchmarks
+
+<Warning>
+  All tests must pass locally before submitting a pull request. PRs with failing tests will not be merged.
+</Warning>
+
+## Go testing
+
+### Running tests
+
+<CodeGroup>
+  ```bash Basic tests
+  go test ./...
+  ```
+
+  ```bash Verbose output
+  go test -v ./...
+  ```
+
+  ```bash With race detection
+  go test -v -race ./...
+  ```
+
+  ```bash With coverage
+  go test -v -race -cover ./...
+  ```
+</CodeGroup>
+
+### Using Makefile
+
+The project provides convenient Make targets:
+
+```bash
+make test
+```
+
+### Writing unit tests
+
+Follow Go testing conventions:
+
+```go
+package analyzer
+
+import (
+    "testing"
+    "github.com/stretchr/testify/assert"
+    "github.com/stretchr/testify/require"
+)
+
+func TestParseTransaction(t *testing.T) {
+    tests := []struct {
+        name    string
+        input   string
+        want    *Transaction
+        wantErr bool
+    }{
+        {
+            name:  "valid transaction",
+            input: "AAAAAgAAAA...",
+            want:  &Transaction{Hash: "abc123"},
+            wantErr: false,
+        },
+        {
+            name:    "invalid XDR",
+            input:   "invalid",
+            want:    nil,
+            wantErr: true,
+        },
+    }
+
+    for _, tt := range tests {
+        t.Run(tt.name, func(t *testing.T) {
+            got, err := ParseTransaction(tt.input)
+            if tt.wantErr {
+                require.Error(t, err)
+                return
+            }
+            require.NoError(t, err)
+            assert.Equal(t, tt.want, got)
+        })
+    }
+}
+```
+
+<Note>
+  Use table-driven tests to cover multiple scenarios efficiently.
+</Note>
+
+### Running a single test
+
+You can run specific tests by name:
+
+```bash
+go test -run TestParseTransaction ./internal/analyzer
+```
+
+### Benchmark tests
+
+For performance-critical code, include benchmarks:
+
+```go
+func BenchmarkParseTransaction(b *testing.B) {
+    envelope := "AAAAAgAAAA..." // Sample XDR
+    
+    b.ResetTimer()
+    for i := 0; i < b.N; i++ {
+        _, _ = ParseTransaction(envelope)
+    }
+}
+```
+
+Run benchmarks with:
+
+<CodeGroup>
+  ```bash All benchmarks
+  make bench
+  ```
+
+  ```bash RPC benchmarks only
+  make bench-rpc
+  ```
+
+  ```bash Simulator benchmarks only
+  make bench-sim
+  ```
+
+  ```bash With memory stats
+  go test -bench=. -benchmem ./...
+  ```
+</CodeGroup>
+
+### Profiling tests
+
+Profile CPU and memory usage during tests:
+
+```bash
+# Generate CPU and memory profiles
+go test -cpuprofile=cpu.prof -memprofile=mem.prof ./...
+
+# Analyze the CPU profile
+go tool pprof cpu.prof
+```
+
+With Make:
+
+```bash
+make bench-profile
+```
+
+## Rust testing
+
+### Running tests
+
+<CodeGroup>
+  ```bash All tests
+  cd simulator
+  cargo test --all
+  ```
+
+  ```bash Release mode
+  cargo test --all --release
+  ```
+
+  ```bash Verbose output
+  cargo test --verbose
+  ```
+
+  ```bash Specific package
+  cargo test --release -p erst-sim
+  ```
+</CodeGroup>
+
+### Using Makefile
+
+From the project root:
+
+```bash
+make rust-test
+```
+
+### Writing unit tests
+
+Follow Rust testing conventions:
+
+```rust
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_simulate_successful_transaction() {
+        let envelope = create_test_envelope();
+        let state = create_test_ledger_state();
+        
+        let result = simulate_transaction(&envelope, &state);
+        
+        assert!(result.is_ok());
+        let output = result.unwrap();
+        assert_eq!(output.status, SimulationStatus::Success);
+    }
+
+    #[test]
+    fn test_simulate_failed_transaction() {
+        let envelope = create_failing_envelope();
+        let state = create_test_ledger_state();
+        
+        let result = simulate_transaction(&envelope, &state);
+        
+        assert!(result.is_err());
+        match result {
+            Err(SimulatorError::TransactionFailed(reason)) => {
+                assert!(reason.contains("insufficient balance"));
+            }
+            _ => panic!("Expected TransactionFailed error"),
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "Invalid envelope format")]
+    fn test_invalid_envelope_panics() {
+        let invalid_envelope = TransactionEnvelope::default();
+        validate_envelope(&invalid_envelope).unwrap();
+    }
+}
+```
+
+### Integration tests
+
+Create integration tests in `simulator/tests/`:
+
+```rust
+// simulator/tests/integration_test.rs
+use erst_sim::*;
+
+#[test]
+fn test_full_transaction_replay() {
+    // Setup
+    let config = SimulatorConfig::default();
+    let simulator = Simulator::new(config).unwrap();
+    
+    // Execute
+    let tx_hash = "abc123...";
+    let result = simulator.replay_transaction(tx_hash);
+    
+    // Verify
+    assert!(result.is_ok());
+    let output = result.unwrap();
+    assert_eq!(output.events.len(), 5);
+}
+```
+
+## Test coverage
+
+### Go coverage
+
+Generate and view coverage reports:
+
+```bash
+# Generate coverage profile
+go test -coverprofile=coverage.out ./...
+
+# View coverage in terminal
+go tool cover -func=coverage.out
+
+# Generate HTML coverage report
+go tool cover -html=coverage.out -o coverage.html
+```
+
+### Rust coverage
+
+For Rust, you can use `tarpaulin` or `llvm-cov`:
+
+```bash
+# Install tarpaulin
+cargo install cargo-tarpaulin
+
+# Generate coverage report
+cd simulator
+cargo tarpaulin --out Html
+```
+
+## Testing best practices
+
+<Accordion title="Test naming conventions">
+  - **Go**: Use `Test` prefix followed by the function name: `TestParseTransaction`
+  - **Rust**: Use descriptive names with underscores: `test_parse_successful_transaction`
+  - **Benchmarks**: Use `Benchmark` prefix in Go: `BenchmarkParseTransaction`
+</Accordion>
+
+<Accordion title="Test isolation">
+  - Each test should be independent and not rely on other tests
+  - Use setup and teardown functions to create clean test environments
+  - Avoid shared mutable state between tests
+  - Use parallel testing when tests are independent
+</Accordion>
+
+<Accordion title="Test data">
+  - Use table-driven tests to cover multiple scenarios
+  - Create helper functions for common test data setup
+  - Store large test fixtures in separate files
+  - Use meaningful test data that represents real-world scenarios
+</Accordion>
+
+<Accordion title="Error testing">
+  - Test both success and failure cases
+  - Verify error messages are helpful and accurate
+  - Test edge cases and boundary conditions
+  - Ensure error handling doesn't panic unexpectedly
+</Accordion>
+
+<Accordion title="Mock and stub usage">
+  - Use interfaces to enable mocking in Go
+  - Create test doubles for external dependencies
+  - Mock RPC calls and network interactions
+  - Keep mocks simple and focused
+</Accordion>
+
+## Continuous integration
+
+The CI pipeline runs all tests automatically:
+
+1. **Go tests**: Run on Ubuntu with Go 1.23
+2. **Rust tests**: Run on stable Rust toolchain
+3. **Coverage checks**: Ensure coverage doesn't decrease
+4. **Race detection**: Run tests with `-race` flag
+
+<Info>
+  Tests must pass before linting runs. If tests fail, the CI pipeline stops immediately.
+</Info>
+
+## Common testing commands
+
+### All tests (Go + Rust)
+
+```bash
+# Run all Go tests
+make test
+
+# Run all Rust tests
+make rust-test
+
+# Run both
+make test && make rust-test
+```
+
+### Specific package tests
+
+```bash
+# Go: Test specific package
+go test ./internal/analyzer
+
+# Rust: Test specific crate
+cd simulator && cargo test -p erst-sim
+```
+
+### Watch mode
+
+```bash
+# Install cargo-watch for Rust
+cargo install cargo-watch
+
+# Run tests on file changes
+cd simulator && cargo watch -x test
+```
+
+## Test maintenance
+
+- **Update tests** when changing functionality
+- **Remove obsolete tests** when removing features
+- **Refactor tests** to reduce duplication
+- **Document complex test scenarios** with comments
+- **Review test failures** carefully before ignoring them
+
+<Warning>
+  Never commit code that makes existing tests fail. Either fix the code or update the tests to reflect the new behavior.
+</Warning>

@@ -1,0 +1,419 @@
+---
+title: Environment variables
+description: Configure Erst CLI using environment variables for flexible deployment and CI/CD integration
+---
+
+Environment variables provide a flexible way to configure Erst without modifying configuration files, making them ideal for CI/CD pipelines, Docker containers, and dynamic environments.
+
+## Configuration variables
+
+All configuration options can be set via environment variables using the `ERST_` prefix.
+
+### Network and RPC
+
+<ParamField path="ERST_RPC_URL" type="string">
+  Single RPC endpoint URL for connecting to the Stellar network.
+  
+  ```bash
+  export ERST_RPC_URL="https://soroban-testnet.stellar.org"
+  ```
+</ParamField>
+
+<ParamField path="ERST_RPC_URLS" type="string">
+  Comma-separated list of RPC URLs for automatic fallback.
+  
+  ```bash
+  export ERST_RPC_URLS="https://rpc1.stellar.org,https://rpc2.stellar.org"
+  ```
+</ParamField>
+
+<ParamField path="STELLAR_RPC_URLS" type="string">
+  Alternative to `ERST_RPC_URLS`. Comma-separated list of RPC URLs.
+  
+  <Info>
+  `ERST_RPC_URLS` takes precedence if both are set.
+  </Info>
+</ParamField>
+
+<ParamField path="ERST_NETWORK" type="string">
+  Network identifier: `public`, `testnet`, `futurenet`, or `standalone`.
+  
+  ```bash
+  export ERST_NETWORK="testnet"
+  ```
+</ParamField>
+
+<ParamField path="ERST_RPC_TOKEN" type="string">
+  Authentication token for RPC endpoints that require authorization.
+  
+  ```bash
+  export ERST_RPC_TOKEN="your-api-token"
+  ```
+</ParamField>
+
+### Simulator configuration
+
+<ParamField path="ERST_SIMULATOR_PATH" type="string">
+  Custom path to the `erst-sim` binary.
+  
+  ```bash
+  export ERST_SIMULATOR_PATH="/usr/local/bin/erst-sim"
+  ```
+  
+  <Note>
+  If not set, Erst searches in order:
+  1. `./erst-sim` (current directory)
+  2. `./simulator/target/release/erst-sim` (development path)
+  3. System PATH
+  </Note>
+</ParamField>
+
+### Logging
+
+<ParamField path="ERST_LOG_LEVEL" type="string" default="info">
+  Unified log level for both the Go CLI and Rust simulator.
+  
+  Valid values: `trace`, `debug`, `info`, `warn`, `error`
+  
+  ```bash
+  export ERST_LOG_LEVEL="debug"
+  erst debug <transaction-hash>
+  ```
+  
+  <Info>
+  The `--verbose` / `-v` flag is a shorthand that sets the log level to `debug` for that invocation.
+  </Info>
+</ParamField>
+
+<ParamField path="RUST_LOG" type="string">
+  Override Rust simulator logging independently. When both `ERST_LOG_LEVEL` and `RUST_LOG` are set, the simulator prefers `ERST_LOG_LEVEL`.
+  
+  ```bash
+  export RUST_LOG="trace"
+  ```
+</ParamField>
+
+### Storage and caching
+
+<ParamField path="ERST_CACHE_PATH" type="string" default="~/.erst/cache">
+  Directory for storing transaction traces and snapshots.
+  
+  ```bash
+  export ERST_CACHE_PATH="/var/cache/erst"
+  ```
+</ParamField>
+
+### Request settings
+
+<ParamField path="ERST_REQUEST_TIMEOUT" type="number" default="15">
+  HTTP request timeout in seconds. Must be an integer between 1 and 300.
+  
+  ```bash
+  export ERST_REQUEST_TIMEOUT="30"
+  ```
+</ParamField>
+
+### Sandbox mode
+
+<ParamField path="ERST_SANDBOX_NATIVE_TOKEN_CAP_STROOPS" type="number">
+  Hard cap (in stroops) on the sum of native XLM payment amounts in transaction envelopes during simulation.
+  
+  Used in local/sandbox mode to simulate realistic economic constraints during integration tests.
+  
+  ```bash
+  export ERST_SANDBOX_NATIVE_TOKEN_CAP_STROOPS="10000000"  # 1 XLM
+  erst debug <tx-hash>
+  ```
+  
+  <Warning>
+  Simulations exceeding this cap will fail before the simulator runs, with a clear error message.
+  </Warning>
+  
+  Request-level `sandbox_native_token_cap_stroops` overrides this when set programmatically.
+</ParamField>
+
+### Crash reporting
+
+<ParamField path="ERST_CRASH_REPORTING" type="boolean" default="false">
+  Enable anonymous crash reporting.
+  
+  ```bash
+  export ERST_CRASH_REPORTING="true"
+  ```
+  
+  Valid values: `1`, `true`, `yes` (enable) or `0`, `false`, `no` (disable)
+</ParamField>
+
+<ParamField path="ERST_CRASH_ENDPOINT" type="string" default="https://crash.erst.dev/v1/report">
+  Override the crash report collection endpoint.
+  
+  ```bash
+  export ERST_CRASH_ENDPOINT="https://crash.erst.dev/v1/report"
+  ```
+</ParamField>
+
+<ParamField path="ERST_SENTRY_DSN" type="string">
+  Sentry DSN for crash reporting.
+  
+  ```bash
+  export ERST_SENTRY_DSN="https://<key>@<org>.ingest.sentry.io/<project>"
+  ```
+</ParamField>
+
+### HSM configuration
+
+<ParamField path="ERST_PKCS11_MODULE" type="string">
+  Path to PKCS#11 module for Hardware Security Module (HSM) support.
+  
+  ```bash
+  export ERST_PKCS11_MODULE="/usr/lib/softhsm/libsofthsm2.so"
+  ```
+</ParamField>
+
+<ParamField path="ERST_PKCS11_MAX_RPM" type="number" default="1000">
+  Maximum requests per minute to protect HSM from rate limiting.
+  
+  ```bash
+  export ERST_PKCS11_MAX_RPM="1000"
+  ```
+</ParamField>
+
+## Unified logging behavior
+
+Setting `ERST_LOG_LEVEL` controls verbosity across the entire tool chain:
+
+1. The Go CLI reads the variable at startup to configure its `slog` logger
+2. When spawning the Rust simulator, it translates the value into a `RUST_LOG` filter
+3. Both processes honor the same log level
+
+```bash
+export ERST_LOG_LEVEL=debug
+erst debug <transaction-hash>
+```
+
+You can still override the Rust side independently by setting `RUST_LOG` directly. When both variables are present, the simulator prefers `ERST_LOG_LEVEL`.
+
+## Usage examples
+
+### Linux and macOS
+
+#### Setting environment variables
+
+```bash
+export ERST_SIMULATOR_PATH="/path/to/custom/erst-sim"
+export ERST_LOG_LEVEL="debug"
+export ERST_NETWORK="testnet"
+./erst debug <transaction-hash>
+```
+
+#### Temporary override (single command)
+
+```bash
+ERST_SIMULATOR_PATH="/tmp/debug-sim" ./erst debug abc123...
+```
+
+#### Adding to shell profile
+
+```bash ~/.bashrc or ~/.zshrc
+export ERST_LOG_LEVEL="info"
+export ERST_CACHE_PATH="~/.erst/cache"
+export ERST_NETWORK="testnet"
+```
+
+### Windows PowerShell
+
+#### Setting environment variables
+
+```powershell
+$env:ERST_SIMULATOR_PATH = "C:\path\to\custom\erst-sim.exe"
+$env:ERST_LOG_LEVEL = "debug"
+.\erst debug <transaction-hash>
+```
+
+#### Persistent environment variables
+
+```powershell
+[System.Environment]::SetEnvironmentVariable('ERST_LOG_LEVEL', 'info', 'User')
+```
+
+### Docker
+
+#### Dockerfile
+
+```dockerfile
+FROM ubuntu:22.04
+
+ENV ERST_SIMULATOR_PATH=/usr/local/bin/erst-sim
+ENV ERST_LOG_LEVEL=info
+ENV ERST_CACHE_PATH=/var/cache/erst
+
+COPY erst /usr/local/bin/
+COPY erst-sim /usr/local/bin/
+```
+
+#### Docker Compose
+
+```yaml docker-compose.yml
+services:
+  erst:
+    image: erst:latest
+    environment:
+      - ERST_LOG_LEVEL=debug
+      - ERST_RPC_URL=https://soroban-testnet.stellar.org
+      - ERST_NETWORK=testnet
+      - ERST_CACHE_PATH=/cache
+    volumes:
+      - ./cache:/cache
+```
+
+#### Docker run
+
+```bash
+docker run -e ERST_LOG_LEVEL=debug \
+           -e ERST_NETWORK=testnet \
+           erst:latest debug <tx-hash>
+```
+
+### CI/CD pipelines
+
+#### GitHub Actions
+
+```yaml .github/workflows/test.yml
+name: Test with Erst
+
+on: [push, pull_request]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      ERST_LOG_LEVEL: debug
+      ERST_NETWORK: testnet
+      ERST_SANDBOX_NATIVE_TOKEN_CAP_STROOPS: 10000000
+    
+    steps:
+      - uses: actions/checkout@v3
+      - name: Run Erst debug
+        run: erst debug ${{ env.TX_HASH }}
+```
+
+#### GitLab CI
+
+```yaml .gitlab-ci.yml
+test:
+  variables:
+    ERST_LOG_LEVEL: "debug"
+    ERST_NETWORK: "testnet"
+    ERST_CACHE_PATH: "/cache"
+  script:
+    - erst debug $TX_HASH
+```
+
+### Custom network with environment variables
+
+```bash
+export ERST_HORIZON_URL="http://localhost:8000"
+export ERST_NETWORK_PASSPHRASE="Local Development Network"
+export ERST_RPC_URL="http://localhost:8001"
+erst debug <tx-hash> --custom-network
+```
+
+### Sandbox token cap for integration tests
+
+Simulate realistic economic constraints in CI:
+
+```bash
+export ERST_SANDBOX_NATIVE_TOKEN_CAP_STROOPS=10000000  # 1 XLM in stroops
+./erst debug <tx-hash>
+```
+
+Any simulation whose envelope contains native payments totaling more than the cap will fail before the simulator runs, with a clear error.
+
+<Note>
+You can also set `sandbox_native_token_cap_stroops` on the simulation request when building it programmatically. The request value overrides the environment variable.
+</Note>
+
+## Best practices
+
+### Security
+
+1. **Never commit secrets**: Don't commit `.env` files or API tokens to version control
+2. **Use CI/CD secrets**: Store sensitive values in your CI/CD platform's secret management
+3. **Restrict permissions**: Use environment variables for credentials rather than config files
+
+### Organization
+
+1. **Use `.env` files locally**: Keep local development settings in `.env` (add to `.gitignore`)
+2. **Document required variables**: List all required environment variables in your README
+3. **Provide example files**: Include `.env.example` with dummy values
+
+### Development vs production
+
+```bash .env.development
+ERST_LOG_LEVEL=debug
+ERST_NETWORK=testnet
+ERST_SIMULATOR_PATH=./simulator/target/debug/erst-sim
+```
+
+```bash .env.production
+ERST_LOG_LEVEL=warn
+ERST_NETWORK=public
+ERST_CRASH_REPORTING=true
+ERST_RPC_TOKEN=${API_TOKEN}
+```
+
+## Troubleshooting
+
+### Verification
+
+Check if environment variables are set:
+
+```bash
+echo $ERST_LOG_LEVEL
+env | grep ERST_
+```
+
+### Common issues
+
+<Accordion title="Environment variable not taking effect">
+  Ensure the variable is exported:
+  
+  ```bash
+  # Wrong (only sets for current shell)
+  ERST_LOG_LEVEL=debug
+  
+  # Correct (exports to child processes)
+  export ERST_LOG_LEVEL=debug
+  ```
+</Accordion>
+
+<Accordion title="Docker environment variables not working">
+  Use `-e` flag or `environment` in docker-compose:
+  
+  ```bash
+  docker run -e ERST_LOG_LEVEL=debug erst:latest
+  ```
+</Accordion>
+
+<Accordion title="CI/CD variables not recognized">
+  Check variable naming and ensure they're exported in the job environment, not just set as CI/CD variables.
+</Accordion>
+
+## Notes
+
+- All environment variables are optional and have sensible defaults
+- Environment variables override configuration file settings
+- Command-line flags override environment variables
+- The simulator binary path detection works out-of-the-box for development and production
+- If the simulator binary cannot be found, Erst displays a helpful error with setup instructions
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Configuration overview" icon="gear" href="/configuration/overview">
+    Learn about all configuration methods
+  </Card>
+  <Card title="Custom networks" icon="network-wired" href="/configuration/custom-networks">
+    Configure private and local Stellar networks
+  </Card>
+</CardGroup>

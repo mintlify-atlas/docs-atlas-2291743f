@@ -1,0 +1,399 @@
+---
+title: HSM integration
+description: Hardware Security Module integration for secure cryptographic operations
+---
+
+## Overview
+
+The Erst simulator supports Hardware Security Module (HSM) integration for cryptographic operations through a generic Signer interface. This allows for secure key management and signing operations using both software-based keys and hardware-backed keys via PKCS#11.
+
+## Architecture
+
+### Generic signer interface
+
+The HSM integration is built around a generic `Signer` trait that abstracts cryptographic operations:
+
+```rust
+#[async_trait]
+pub trait Signer: Send + Sync {
+    async fn sign(&self, data: &[u8]) -> Result<Signature, SignerError>;
+    async fn public_key(&self) -> Result<PublicKey, SignerError>;
+    fn signer_info(&self) -> SignerInfo;
+}
+```
+
+### Supported implementations
+
+<Accordion title="Software signer">
+Uses local Ed25519/secp256k1 keys for development and testing environments.
+</Accordion>
+
+<Accordion title="PKCS#11 signer">
+Interfaces with hardware security modules for production environments requiring enhanced security.
+</Accordion>
+
+## Quick start
+
+### Software signer
+
+```rust
+use erst::hsm::{SoftwareSigner, SignerFactory};
+
+// Generate a new key pair
+let (signer, pem_data) = SoftwareSigner::generate()?;
+
+// Use the signer
+let data = b"Hello, world!";
+let signature = signer.sign(data).await?;
+let public_key = signer.public_key().await?;
+```
+
+### PKCS#11 HSM signer
+
+```rust
+use erst::hsm::{SignerFactory, SignerConfig};
+
+// Configure from environment
+let signer = SignerFactory::create_from_env().await?;
+
+// Use the HSM signer
+let data = b"Secure transaction";
+let signature = signer.sign(data).await?;
+```
+
+## Configuration
+
+### Environment variables
+
+#### Software signer
+
+```bash
+export ERST_SIGNER_TYPE=software
+export ERST_SIGNER_ALGORITHM=ed25519
+export ERST_SOFTWARE_PRIVATE_KEY_PATH=/path/to/private_key.pem
+# OR
+export ERST_SOFTWARE_PRIVATE_KEY_PEM="-----BEGIN PRIVATE KEY-----..."
+```
+
+#### PKCS#11 signer
+
+```bash
+export ERST_SIGNER_TYPE=pkcs11
+export ERST_SIGNER_ALGORITHM=ed25519
+export ERST_PKCS11_MODULE=/usr/lib/libykcs11.so
+export ERST_PKCS11_PIN=123456
+export ERST_PKCS11_TOKEN_LABEL="YubiKey PIV"
+
+# OR specify slot/key identifiers
+export ERST_PKCS11_SLOT=0
+export ERST_PKCS11_KEY_LABEL=MySigningKey
+# OR
+export ERST_PKCS11_KEY_ID=01
+# OR
+export ERST_PKCS11_PIV_SLOT=9a
+```
+
+### Programmatic configuration
+
+```rust
+use erst::hsm::{SignerConfig, SoftwareSignerConfig, Pkcs11SignerConfig};
+
+let config = SignerConfig {
+    signer_type: "pkcs11".to_string(),
+    algorithm: "ed25519".to_string(),
+    software: None,
+    pkcs11: Some(Pkcs11SignerConfig {
+        module_path: "/usr/lib/libykcs11.so".to_string(),
+        pin: "123456".to_string(),
+        token_label: Some("YubiKey PIV".to_string()),
+        slot_index: None,
+        key_label: None,
+        key_id_hex: Some("01".to_string()),
+        piv_slot: None,
+        public_key_pem: None,
+    }),
+};
+
+let signer = SignerFactory::create_from_config(&config).await?;
+```
+
+## Supported hardware
+
+### YubiKey
+
+YubiKey devices with PIV support are fully compatible:
+
+```bash
+# YubiKey PKCS#11 module (usually installed with yubikey-manager)
+export ERST_PKCS11_MODULE=/usr/lib/x86_64-linux-gnu/libykcs11.so
+
+# Common PIV slots
+export ERST_PKCS11_PIV_SLOT=9a  # PIV Authentication
+export ERST_PKCS11_PIV_SLOT=9c  # Digital Signature
+export ERST_PKCS11_PIV_SLOT=9d  # Key Management
+```
+
+### Generic PKCS#11 modules
+
+Any PKCS#11-compliant HSM should work:
+
+<Accordion title="SoftHSM">
+```bash
+# Software-based HSM for testing
+export ERST_PKCS11_MODULE=/usr/lib/softhsm/libsofthsm2.so
+```
+</Accordion>
+
+<Accordion title="Nitrokey HSM">
+```bash
+export ERST_PKCS11_MODULE=/usr/lib/libnitrokey.so
+```
+</Accordion>
+
+<Accordion title="AWS CloudHSM">
+```bash
+export ERST_PKCS11_MODULE=/opt/cloudhsm/lib/libcloudhsm_pkcs11.so
+```
+</Accordion>
+
+## Key management
+
+### Generating keys
+
+#### Software keys
+
+```rust
+use erst::hsm::software::SoftwareSigner;
+
+let (signer, pem_data) = SoftwareSigner::generate()?;
+println!("Private key:\n{}", pem_data);
+```
+
+#### HSM keys
+
+HSM keys must be generated using the HSM's native tools:
+
+<Accordion title="YubiKey">
+```bash
+# Using yubico-piv-tool
+yubico-piv-tool -a generate -s 9a -o public_key.pem -A ECCP256
+```
+</Accordion>
+
+<Accordion title="SoftHSM">
+```bash
+# Using softhsm2-util
+softhsm2-util --init-token --free --label mytoken --pin 123456 --so-pin 123456
+softhsm2-util --generate-key --algorithm ed25519 --label mykey --token mytoken
+```
+</Accordion>
+
+### Key formats
+
+#### Ed25519 keys
+- **Private**: PKCS#8 PEM format
+- **Public**: SPKI DER format
+
+#### secp256k1 keys
+- **Private**: PKCS#8 PEM format
+- **Public**: SPKI DER format
+
+## Security considerations
+
+### Key protection
+
+<Steps>
+  <Step title="HSM keys">
+    Private keys never leave the HSM device, providing the highest level of security.
+  </Step>
+  
+  <Step title="Software keys">
+    Store securely with restricted file permissions (chmod 600).
+  </Step>
+  
+  <Step title="PIN management">
+    Use strong PINs and avoid hardcoding them in source code. Use environment variables or secure vaults.
+  </Step>
+</Steps>
+
+### Best practices
+
+<Accordion title="Use HSM for production">
+Hardware keys provide better security than software keys for production environments.
+</Accordion>
+
+<Accordion title="Backup keys">
+Maintain secure backups of critical keys in encrypted storage.
+</Accordion>
+
+<Accordion title="Rotate keys">
+Regularly rotate signing keys according to your security policy.
+</Accordion>
+
+<Accordion title="Audit access">
+Monitor and log all key usage for security auditing.
+</Accordion>
+
+### Threat mitigation
+
+| Threat | Mitigation |
+|--------|------------|
+| Key extraction | HSM prevents private key extraction |
+| Side channel attacks | Use hardware with side-channel protection |
+| Physical security | Secure HSM devices in physically protected locations |
+
+## Performance
+
+### Benchmarks
+
+| Signer type | Algorithm | Sign operation | Key generation |
+|-------------|-----------|----------------|----------------|
+| Software | Ed25519 | ~0.1ms | ~1ms |
+| Software | secp256k1 | ~0.5ms | ~5ms |
+| HSM | Ed25519 | ~10ms | N/A |
+| HSM | secp256k1 | ~15ms | N/A |
+
+<Note>
+HSM times vary by device and connection type (USB, network, etc.)
+</Note>
+
+### Optimization tips
+
+- **Reuse sessions**: For HSM, reuse PKCS#11 sessions when possible
+- **Batch operations**: Group multiple signing operations together
+- **Connection pooling**: For network-connected HSMs, use connection pooling
+- **Caching**: Cache public keys to avoid repeated HSM calls
+
+## Troubleshooting
+
+### Common issues
+
+<Accordion title="PKCS#11 module not found">
+**Error**: `Failed to load PKCS#11 module: No such file or directory`
+
+**Solution**:
+```bash
+# Verify module path
+ls -la /usr/lib/libykcs11.so
+
+# Install YubiKey manager
+sudo apt-get install yubikey-manager
+# or
+brew install yubikey-manager
+```
+</Accordion>
+
+<Accordion title="HSM not detected">
+**Error**: `No slots found`
+
+**Solution**:
+```bash
+# Check if HSM is connected
+yubico-piv-tool -a status
+
+# Verify permissions
+sudo usermod -a -G plugdev $USER
+# Log out and back in
+```
+</Accordion>
+
+<Accordion title="PIN incorrect">
+**Error**: `Failed to login: 0x1000`
+
+**Solution**:
+```bash
+# Verify PIN
+yubico-piv-tool -a verify-pin -P 123456
+
+# Reset PIN if needed (requires PUK)
+yubico-piv-tool -a change-pin -P 123456 -N 654321
+```
+</Accordion>
+
+<Accordion title="Key not found">
+**Error**: `Private key not found in HSM`
+
+**Solution**:
+```bash
+# List available keys
+yubico-piv-tool -a list
+
+# Generate key if needed
+yubico-piv-tool -a generate -s 9a -o pubkey.pem -A ECCP256
+```
+</Accordion>
+
+### Debug mode
+
+Enable debug logging for troubleshooting:
+
+```rust
+use tracing_subscriber;
+
+tracing_subscriber::fmt()
+    .with_max_level(tracing::Level::DEBUG)
+    .init();
+```
+
+## Migration guide
+
+### From in-memory keys to HSM
+
+<Steps>
+  <Step title="Extract current keys">
+    Export existing keys to PEM format for backup.
+  </Step>
+  
+  <Step title="Generate HSM keys">
+    Create new keys in your HSM device using the appropriate tools.
+  </Step>
+  
+  <Step title="Update configuration">
+    Switch from software signer to PKCS#11 signer in your environment variables.
+  </Step>
+  
+  <Step title="Test verification">
+    Ensure signatures verify correctly with the new HSM keys.
+  </Step>
+</Steps>
+
+### Example migration
+
+```rust
+// Before (in-memory)
+let private_key = generate_key();
+let signature = sign_data(private_key, data);
+
+// After (HSM)
+let signer = SignerFactory::create_from_env().await?;
+let signature = signer.sign(data).await?;
+```
+
+## Testing
+
+### Unit tests
+
+```bash
+cargo test hsm --lib
+```
+
+### Integration tests
+
+```bash
+# Software signer tests
+cargo test hsm_integration_tests --test hsm_integration_tests
+
+# HSM tests (requires actual HSM)
+ERST_PKCS11_MODULE=/usr/lib/libykcs11.so ERST_PKCS11_PIN=123456 \
+cargo test pkcs11_integration --test hsm_integration_tests
+```
+
+### Example usage
+
+```bash
+cargo run --example hsm_integration
+```
+
+<Warning>
+Never commit HSM PINs or private keys to version control. Always use environment variables or secure secret management systems.
+</Warning>

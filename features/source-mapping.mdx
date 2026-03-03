@@ -1,0 +1,426 @@
+---
+title: Source mapping
+description: Map WASM instruction failures to specific Rust source code lines using debug symbols
+---
+
+Source mapping is the feature that connects WASM execution failures back to your original Rust source code. When your contract traps or fails, Erst can show you the exact file and line number where the problem occurred.
+
+## How it works
+
+Source mapping relies on DWARF debug symbols embedded in your contract's WASM:
+
+<Steps>
+  <Step title="Compile with debug symbols">
+    Build your contract with debug information included in the WASM binary.
+  </Step>
+  
+  <Step title="DWARF parsing">
+    Erst reads the `.debug_info` and `.debug_line` sections from the WASM.
+  </Step>
+  
+  <Step title="Instruction mapping">
+    When a trap occurs, Erst maps the WASM instruction offset to source location.
+  </Step>
+  
+  <Step title="Display source context">
+    The exact file, line, and column are displayed in the trace.
+  </Step>
+</Steps>
+
+## Enabling debug symbols
+
+Compile your Soroban contract with debug symbols:
+
+### Using Cargo features
+
+Add debug features to your contract build:
+
+```toml Cargo.toml
+[profile.release]
+debug = true
+```
+
+Then build:
+
+```bash
+stellar contract build
+```
+
+### Alternative: Debug profile
+
+Build with the debug profile:
+
+```bash
+stellar contract build --profile dev
+```
+
+<Note>
+Debug symbols increase WASM file size significantly. Only use them for development and debugging.
+</Note>
+
+### Verify debug symbols
+
+Check if your WASM contains debug information:
+
+```bash
+wasm-objdump -h target/wasm32-unknown-unknown/release/contract.wasm | grep debug
+```
+
+You should see sections like:
+```
+.debug_info
+.debug_line
+.debug_str
+.debug_abbrev
+```
+
+## Using source mapping
+
+When debugging with source-mapped WASM, Erst automatically shows source locations:
+
+```bash
+erst debug <transaction-hash> --network testnet
+```
+
+### Output with source mapping
+
+When a failure occurs, you'll see:
+
+```
+❌ Error: Contract execution failed
+
+WASM Instruction: i32.load offset=8
+📄 Source: token.rs:45
+   │
+45 │     let balance = storage.get(&recipient)?;
+   │                   ^^^^^^^^^^^^^^^^^^^^^^^ Out of bounds access
+```
+
+### Output without source mapping
+
+Without debug symbols, you only see:
+
+```
+❌ Error: Contract execution failed
+
+WASM Instruction: i32.load offset=8
+```
+
+<Warning>
+Without debug symbols, you'll have to manually correlate WASM instructions with your source code, which is extremely difficult.
+</Warning>
+
+## Source mapping in the interactive viewer
+
+The interactive trace viewer shows source locations at each step:
+
+```bash
+erst debug <transaction-hash> --interactive
+```
+
+Navigate to any step and see:
+
+```
+📍 Current State
+════════════════════════════════════════════════════════════════════
+Step: 125/248
+Operation: ContractCall
+Function: transfer
+
+📄 Source: src/token.rs:45
+🔗 GitHub: https://github.com/org/repo/blob/main/src/token.rs#L45
+```
+
+### GitHub link generation
+
+When in a Git repository, Erst automatically generates clickable GitHub links:
+
+<Steps>
+  <Step title="Git repository detection">
+    Erst detects if you're in a Git repository.
+  </Step>
+  
+  <Step title="Remote URL extraction">
+    Reads the GitHub remote URL from `.git/config`.
+  </Step>
+  
+  <Step title="Commit hash">
+    Gets the current commit hash to create a permanent link.
+  </Step>
+  
+  <Step title="Line number">
+    Appends `#L<line>` to the URL for direct navigation.
+  </Step>
+</Steps>
+
+Example generated link:
+```
+https://github.com/myorg/myrepo/blob/abc123/contracts/token/src/lib.rs#L45
+```
+
+## Split-pane source view
+
+View trace and source code side by side:
+
+```bash
+erst debug <transaction-hash> --interactive
+# Then in the viewer:
+sp
+```
+
+The split pane shows:
+
+```
+┌─────────────────────────────────┬─────────────────────────────────┐
+│ Step: 125                       │ src/token.rs                    │
+│ Function: transfer              │                                 │
+│ Contract: CDLZFC...             │  43: pub fn transfer(           │
+│                                 │  44:     amount: i128,          │
+│ Arguments:                      │  45:     recipient: Address,    │
+│   amount: i128(1000000)         │  46: ) -> Result<(), Error> {   │
+│   recipient: Address("GC...")   │  47:     let balance = storage │
+│                                 │  48:         .get(&recipient)?; │ ← Error
+│ ❌ Error: Out of bounds         │  49:     require!(              │
+│    at token.rs:48               │  50:         balance >= amount, │
+│                                 │  51:         Error::Insufficient│
+└─────────────────────────────────┴─────────────────────────────────┘
+```
+
+<Info>
+The split-pane view highlights the exact line where execution is or where an error occurred.
+</Info>
+
+## Source mapping architecture
+
+Erst's source mapping implementation consists of:
+
+### DWARF parser
+
+Location: `internal/dwarf/parser.go` (Go) and `src/source_mapper.rs` (Rust)
+
+- Parses `.debug_info` sections for compilation units
+- Reads `.debug_line` sections for instruction-to-line mappings
+- Handles optimized code and inlined functions
+
+### Source mapper
+
+Location: `internal/trace/sourcemap.go`
+
+- Maps WASM instruction offsets to source locations
+- Caches mappings for performance
+- Provides graceful fallback when debug info is missing
+
+### Source context loader
+
+Location: `internal/trace/splitpane.go`
+
+- Reads source files from disk
+- Extracts context lines around the target line
+- Handles missing files gracefully
+
+## Debug symbol format
+
+### DWARF sections
+
+Erst reads these DWARF sections from WASM:
+
+| Section | Purpose |
+|---------|----------|
+| `.debug_info` | Compilation units, types, variables |
+| `.debug_line` | Line number program for instruction mapping |
+| `.debug_str` | String table for names and paths |
+| `.debug_abbrev` | Abbreviation tables for compact encoding |
+| `.debug_ranges` | Address ranges for scopes |
+
+### Optimization handling
+
+Optimized builds present challenges:
+
+- **Inlining**: Functions may be inlined, making the call stack shallow
+- **Dead code elimination**: Some code may not exist in the WASM
+- **Register allocation**: Variables may not have stable locations
+
+<CodeGroup>
+```toml Unoptimized (best mapping)
+[profile.dev]
+opt-level = 0
+debug = true
+```
+
+```toml Optimized (less accurate)
+[profile.release]
+opt-level = 3
+debug = true  # Still useful but less precise
+```
+</CodeGroup>
+
+<Note>
+For the most accurate source mapping during debugging, use unoptimized builds. For production, optimize without debug symbols.
+</Note>
+
+## Local variable inspection
+
+With debug symbols, you can inspect local variables at trap points:
+
+```bash
+erst debug <transaction-hash> --interactive
+# Navigate to the trap
+t  # Show trap info
+```
+
+Output:
+
+```
+❌ Memory Trap Detected
+
+Type: i32.load offset=8 out of bounds
+Step: 145/248
+
+Source Location:
+  File: src/token.rs
+  Line: 45
+  Column: 12
+
+Local Variables:
+  amount: i128(1000000)
+  recipient: Address("GC3D5KRYM6CB7OWQ6TWYRR3Z4T7GNZ...")
+  balance_ptr: 0x10008  ← Out of bounds!
+  sender: Address("GDLZFC3SYJYDZT7K67VZ75HPJVI...")
+
+Function Arguments:
+  env: Env
+  from: Address("GDLZFC...")
+  to: Address("GC3D5K...")
+  amount: i128(1000000)
+```
+
+<Warning>
+Local variable inspection requires DWARF `.debug_loc` sections and works best with unoptimized builds.
+</Warning>
+
+## Source mapping in error suggestions
+
+The error suggestion engine uses source locations to provide context:
+
+```
+=== Potential Fixes (Heuristic Analysis) ===
+
+1. 🔴 [Confidence: high]
+   Location: token.rs:45
+   Potential Fix: Array access at line 45 is out of bounds.
+   Ensure the pointer is within the allocated memory range.
+```
+
+See [Transaction debugging](/features/transaction-debugging) for more on error suggestions.
+
+## Troubleshooting
+
+### No source locations shown
+
+<Steps>
+  <Step title="Check debug symbols">
+    Verify your WASM has debug sections:
+    ```bash
+    wasm-objdump -h contract.wasm | grep debug
+    ```
+  </Step>
+  
+  <Step title="Rebuild with debug">
+    Add `debug = true` to your Cargo.toml and rebuild.
+  </Step>
+  
+  <Step title="Check WASM size">
+    Debug symbols increase size significantly. If size is similar to release build, debug info may be missing.
+  </Step>
+</Steps>
+
+### Wrong line numbers
+
+<Steps>
+  <Step title="Verify build">
+    Ensure the WASM you're debugging matches your source code.
+  </Step>
+  
+  <Step title="Check optimization">
+    Highly optimized builds can have imprecise line mappings.
+  </Step>
+  
+  <Step title="Use dev profile">
+    Build with `--profile dev` for best accuracy.
+  </Step>
+</Steps>
+
+### Missing source files
+
+<Steps>
+  <Step title="Check file paths">
+    DWARF sections contain absolute or relative paths to source files.
+  </Step>
+  
+  <Step title="Run from repo root">
+    Erst looks for source files relative to the current directory.
+  </Step>
+  
+  <Step title="Check Git status">
+    Ensure source files exist at the expected locations.
+  </Step>
+</Steps>
+
+## Best practices
+
+### Development builds
+
+For debugging and development:
+
+```toml Cargo.toml
+[profile.dev]
+opt-level = 0
+debug = true
+```
+
+```bash
+stellar contract build --profile dev
+```
+
+### Production builds
+
+For deployment to mainnet:
+
+```toml Cargo.toml
+[profile.release]
+opt-level = 3
+debug = false  # Remove debug symbols
+strip = true   # Strip additional metadata
+```
+
+```bash
+stellar contract build --release
+```
+
+### CI/CD
+
+Create separate build jobs:
+
+```yaml .github/workflows/build.yml
+- name: Build with debug symbols
+  run: stellar contract build --profile dev
+  
+- name: Build for production
+  run: stellar contract build --release
+```
+
+## Future enhancements
+
+Upcoming source mapping features:
+
+- Full stack trace with source locations for all frames
+- Instruction-level stepping through source code
+- Source-aware breakpoints in interactive viewer
+- Integration with IDEs for click-through debugging
+- Support for other debug formats beyond DWARF
+
+## Next steps
+
+- Use the [Interactive trace viewer](/features/interactive-trace-viewer) to navigate source-mapped traces
+- Enable [Performance profiling](/features/performance-profiling) to see source locations in flamegraphs
+- Learn about [Transaction debugging](/features/transaction-debugging) workflows

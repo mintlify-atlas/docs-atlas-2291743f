@@ -1,0 +1,303 @@
+---
+title: OpenTelemetry
+description: Distributed tracing integration with OpenTelemetry for observability
+---
+
+## Overview
+
+Erst supports exporting distributed traces to external observability platforms via OpenTelemetry. This enables deep visibility into transaction debugging workflows, RPC calls, and simulator execution.
+
+## Quick start
+
+<Steps>
+  <Step title="Start Jaeger">
+    Launch a local Jaeger instance using Docker Compose:
+    ```bash
+    docker-compose -f docker-compose.jaeger.yml up -d
+    ```
+  </Step>
+  
+  <Step title="Enable tracing">
+    Run Erst with tracing enabled:
+    ```bash
+    ./erst debug --tracing --otlp-url http://localhost:4318 <transaction-hash>
+    ```
+  </Step>
+  
+  <Step title="View traces">
+    Open Jaeger UI at http://localhost:16686 to view traces.
+  </Step>
+</Steps>
+
+## Configuration
+
+### CLI flags
+
+- `--tracing`: Enable OpenTelemetry tracing (default: false)
+- `--otlp-url`: OTLP exporter endpoint URL (default: http://localhost:4318)
+
+### Spans generated
+
+The integration creates the following span hierarchy:
+
+```
+debug_transaction
+├── fetch_transaction (RPC call to Horizon)
+└── simulate_transaction (if simulation is run)
+    ├── marshal_request
+    ├── execute_simulator
+    └── unmarshal_response
+```
+
+### Span attributes
+
+Each span includes relevant attributes for filtering and analysis:
+
+<Accordion title="debug_transaction">
+- `transaction.hash`: Transaction hash being debugged
+- `network`: Stellar network (testnet, mainnet, futurenet)
+</Accordion>
+
+<Accordion title="fetch_transaction">
+- `transaction.hash`: Transaction hash
+- `network`: Stellar network
+- `envelope.size_bytes`: Size of transaction envelope in bytes
+</Accordion>
+
+<Accordion title="simulate_transaction">
+- `simulator.binary_path`: Path to simulator binary
+- `request.size_bytes`: Size of simulation request in bytes
+- `response.stdout_size`: Size of simulator response in bytes
+</Accordion>
+
+## Supported platforms
+
+The OTLP HTTP exporter is compatible with:
+
+<Accordion title="Jaeger">
+Open-source distributed tracing platform.
+
+```bash
+docker run -d --name jaeger \
+  -p 16686:16686 \
+  -p 4318:4318 \
+  jaegertracing/all-in-one:latest
+```
+</Accordion>
+
+<Accordion title="Honeycomb">
+Observability platform with advanced query capabilities.
+
+```bash
+./erst debug --tracing --otlp-url https://api.honeycomb.io/v1/traces <tx-hash>
+```
+</Accordion>
+
+<Accordion title="Datadog">
+Full-stack monitoring and analytics platform.
+
+```bash
+./erst debug --tracing --otlp-url http://datadog-agent:4318 <tx-hash>
+```
+</Accordion>
+
+<Accordion title="New Relic">
+Application performance monitoring and observability.
+
+```bash
+./erst debug --tracing --otlp-url https://otlp.nr-data.net:4318 <tx-hash>
+```
+</Accordion>
+
+<Accordion title="Any OTLP-compatible platform">
+Any platform supporting the OpenTelemetry Protocol (OTLP) over HTTP.
+</Accordion>
+
+## Performance
+
+When tracing is disabled (default), there is zero performance overhead. When enabled, the overhead is minimal due to:
+
+- **Efficient span batching**: Spans are batched before export
+- **Asynchronous export**: Trace export doesn't block main execution
+- **Minimal attribute collection**: Only essential attributes are captured
+
+<Note>
+For production deployments, consider using a sampling strategy to reduce trace volume while maintaining visibility into errors and slow requests.
+</Note>
+
+## Example usage
+
+### Debug with Jaeger
+
+```bash
+./erst debug --tracing 5c0a1234567890abcdef1234567890abcdef1234567890abcdef1234567890ab
+```
+
+### Debug with Honeycomb
+
+```bash
+./erst debug --tracing --otlp-url https://api.honeycomb.io/v1/traces <tx-hash>
+```
+
+### Debug with custom OTLP endpoint
+
+```bash
+./erst debug --tracing --otlp-url http://my-collector:4318 <tx-hash>
+```
+
+## Testing graceful degradation
+
+Telemetry is designed to **fail silently**: if the metrics collector is down, core SDK paths do not block and no errors are logged.
+
+### Unit tests
+
+Run the telemetry tests (no collector required):
+
+```bash
+go test ./internal/telemetry/... -v
+```
+
+<Accordion title="TestInit and TestGetTracer">
+Confirm Init and tracer work with tracing on/off.
+</Accordion>
+
+<Accordion title="TestInit_UnreachableCollector">
+Confirm that with tracing enabled and an unreachable OTLP URL, Init still succeeds and spans can be created without blocking.
+</Accordion>
+
+### Run daemon with collector down
+
+Build and start the daemon with tracing enabled but an OTLP URL that nothing is listening on. The daemon should start and keep running (no error, no hang):
+
+```bash
+make build
+./bin/erst daemon --tracing --otlp-url http://127.0.0.1:37999 --port 8080
+```
+
+You should see `Starting ERST daemon on port 8080` and the process stays up.
+
+<Warning>
+Without graceful degradation, Init would fail and the daemon would exit with an error.
+</Warning>
+
+### Run debug with collector down
+
+Debug should complete even if the OTLP endpoint is unreachable:
+
+```bash
+./bin/erst debug --tracing --otlp-url http://127.0.0.1:37999 <tx-hash>
+```
+
+Debug runs as normal; traces are dropped silently when the collector is down.
+
+## Advanced configuration
+
+### Environment variables
+
+You can also configure OpenTelemetry using standard environment variables:
+
+```bash
+export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
+export OTEL_SERVICE_NAME=erst-cli
+export OTEL_TRACES_SAMPLER=traceidratio
+export OTEL_TRACES_SAMPLER_ARG=0.1  # Sample 10% of traces
+
+./erst debug --tracing <tx-hash>
+```
+
+### Custom trace sampling
+
+For high-volume environments, implement custom sampling:
+
+```go
+import (
+    "go.opentelemetry.io/otel/sdk/trace"
+    tracesdk "go.opentelemetry.io/otel/sdk/trace"
+)
+
+// Sample 10% of traces, but always sample errors
+sampler := tracesdk.ParentBased(
+    tracesdk.TraceIDRatioBased(0.1),
+)
+
+tracerProvider := tracesdk.NewTracerProvider(
+    tracesdk.WithSampler(sampler),
+    tracesdk.WithBatcher(exporter),
+)
+```
+
+## Trace analysis patterns
+
+### Identifying slow transactions
+
+Query for traces with high duration:
+
+```
+service.name="erst" AND duration > 5s
+```
+
+### Finding RPC errors
+
+Filter for failed RPC calls:
+
+```
+span.name="fetch_transaction" AND status.code=ERROR
+```
+
+### Analyzing simulator performance
+
+Group by simulator execution time:
+
+```
+span.name="execute_simulator" GROUP BY transaction.hash
+```
+
+## Integration with logs
+
+Combine traces with structured logs for complete observability:
+
+```go
+import (
+    "go.opentelemetry.io/otel/trace"
+    "github.com/dotandev/hintents/internal/logger"
+)
+
+func debugTransaction(ctx context.Context, txHash string) {
+    span := trace.SpanFromContext(ctx)
+    
+    logger.Logger.Info(
+        "Debugging transaction",
+        "transaction_hash", txHash,
+        "trace_id", span.SpanContext().TraceID().String(),
+        "span_id", span.SpanContext().SpanID().String(),
+    )
+}
+```
+
+This allows you to correlate log entries with trace spans using trace and span IDs.
+
+## Best practices
+
+<Accordion title="Use semantic conventions">
+Follow OpenTelemetry semantic conventions for consistent attribute naming across services.
+</Accordion>
+
+<Accordion title="Add custom attributes">
+Enrich spans with domain-specific attributes like contract IDs, network types, and error codes.
+</Accordion>
+
+<Accordion title="Set appropriate sampling">
+Balance visibility with cost by sampling traces appropriately for your environment.
+</Accordion>
+
+<Accordion title="Monitor collector health">
+Ensure your OTLP collector is healthy and processing traces correctly.
+</Accordion>
+
+<Accordion title="Correlate with metrics">
+Use trace IDs to correlate distributed traces with Prometheus metrics for comprehensive observability.
+</Accordion>
+
+<Info>
+For production deployments, consider using a dedicated OpenTelemetry Collector to handle trace aggregation, filtering, and export to multiple backends.
+</Info>

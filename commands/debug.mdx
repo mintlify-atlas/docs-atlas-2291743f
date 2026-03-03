@@ -1,0 +1,141 @@
+---
+title: erst debug
+description: Debug failed Soroban transactions and analyze smart contract execution
+---
+
+<Info>
+The `debug` command is the primary entry point for debugging Soroban transactions. It fetches transaction data from the network, simulates execution locally, and provides detailed error traces.
+</Info>
+
+## Usage
+
+```bash
+erst debug <transaction-hash> [flags]
+```
+
+## Description
+
+The `debug` command helps you understand why a Soroban transaction failed by:
+
+- Fetching the transaction envelope and ledger state from the network
+- Simulating execution locally with detailed instrumentation
+- Decoding errors and mapping them to readable instructions
+- Tracking token flows and contract events
+- Generating execution traces for further analysis
+
+## Examples
+
+<CodeGroup>
+```bash Debug on mainnet
+erst debug abc123...def
+```
+
+```bash Debug on testnet
+erst debug abc123...def --network testnet
+```
+
+```bash Test local WASM
+erst debug --wasm ./contract.wasm
+```
+
+```bash Debug with profiling
+erst debug abc123...def --profile
+```
+
+```bash Debug offline from stdin
+erst debug < tx.xdr
+```
+</CodeGroup>
+
+## Flags
+
+### Network configuration
+
+<ParamField path="--network" type="string" default="mainnet">
+  Stellar network to use: `testnet`, `mainnet`, or `futurenet`
+</ParamField>
+
+<ParamField path="--rpc-url" type="string">
+  Custom Soroban RPC URL (overrides default for network)
+</ParamField>
+
+<ParamField path="--rpc-token" type="string">
+  RPC authentication token (can also use `ERST_RPC_TOKEN` env var)
+</ParamField>
+
+### Local testing
+
+<ParamField path="--wasm" type="string">
+  Path to local WASM file for testing without deploying
+</ParamField>
+
+<ParamField path="--optimize" type="boolean" default="false">
+  Run dead-code elimination on local WASM before simulation
+</ParamField>
+
+<ParamField path="--args" type="string[]">
+  Mock arguments to pass to the local WASM execution
+</ParamField>
+
+### Output options
+
+<ParamField path="--verbose" type="boolean" default="false">
+  Print detailed simulation output and diagnostic information
+  
+  Alias: `-v`
+</ParamField>
+
+<ParamField path="--interactive" type="boolean" default="false">
+  Launch interactive trace viewer after debugging
+  
+  Alias: `-i`
+</ParamField>
+
+<ParamField path="--theme" type="string">
+  Color theme for output: `default`, `deuteranopia`, `protanopia`, `tritanopia`, or `high-contrast`
+</ParamField>
+
+### Advanced options
+
+<ParamField path="--protocol-version" type="uint32">
+  Override protocol version for simulation (20, 21, 22, etc.)
+</ParamField>
+
+<ParamField path="--sim-path" type="string">
+  Path to erst-sim binary (overrides auto-discovery)
+</ParamField>
+
+## Interactive mode
+
+When using `--interactive`, the debug command launches a terminal UI with:
+
+- **Search**: Press `/` to search through traces
+- **Navigation**: Use arrow keys to expand/collapse nodes
+- **Help**: Press `?` or `h` to see all keyboard shortcuts
+- **Syntax highlighting**: Color-coded contract IDs, functions, and errors
+- **Match counter**: See "Match 2 of 5" while searching
+
+## Performance profiling
+
+When using `--profile`, generates an interactive flamegraph visualizing CPU and memory consumption:
+
+```bash
+# Generate interactive HTML flamegraph
+erst debug --profile abc123...def
+
+# Generate raw SVG
+erst debug --profile --profile-format svg abc123...def
+```
+
+The flamegraph includes:
+- Hover tooltips with frame details
+- Click-to-zoom for specific call stacks
+- Search/highlight to find frames by name
+- Dark mode support
+
+## Related commands
+
+- [trace](/commands/trace) - Navigate execution traces interactively
+- [compare](/commands/compare) - Compare local vs on-chain execution
+- [profile](/commands/profile) - Export trace as pprof profile for gas analysis
+- [session](/commands/session) - Save debugging session for later

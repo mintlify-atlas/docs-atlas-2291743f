@@ -1,0 +1,243 @@
+---
+title: Configuration overview
+description: Learn how to configure Erst CLI using files, environment variables, and command-line flags
+---
+
+Erst CLI offers flexible configuration through multiple methods, with a clear precedence order to give you control at every level.
+
+## Configuration hierarchy
+
+Configuration values are loaded in the following order, with later sources overriding earlier ones:
+
+1. **Default values** - Built-in sensible defaults
+2. **Configuration files** - TOML files on disk
+3. **Environment variables** - System environment settings
+4. **Command-line flags** - Direct CLI arguments
+
+<Note>
+Command-line flags always take precedence over all other configuration methods.
+</Note>
+
+## Configuration files
+
+Erst searches for TOML configuration files in these locations (in order):
+
+1. `.erst.toml` in the current directory
+2. `~/.erst.toml` in your home directory
+3. `/etc/erst/config.toml` system-wide configuration
+
+### Example configuration file
+
+Copy `erst.example.toml` to one of the locations above:
+
+```toml ~/.erst.toml
+# RPC URL for the Stellar network (single URL)
+rpc_url = "https://soroban-testnet.stellar.org"
+
+# Multi-RPC URLs for automatic fallback (array syntax)
+# rpc_urls = ["https://rpc1.stellar.org", "https://rpc2.stellar.org"]
+
+# Network: public, testnet, futurenet, or standalone
+network = "testnet"
+
+# Path to the ERST simulator (optional)
+# simulator_path = "/path/to/simulator"
+
+# Log level: trace, debug, info, warn, error
+log_level = "info"
+
+# Cache directory for storing traces and snapshots
+# cache_path = "~/.erst/cache"
+
+# Request timeout in seconds (1-300)
+# request_timeout = 15
+
+# Opt-in anonymous crash reporting
+# crash_reporting = false
+```
+
+## Core configuration options
+
+### Network connection
+
+<ParamField path="rpc_url" type="string" default="https://soroban-testnet.stellar.org">
+  Single RPC endpoint URL for connecting to the Stellar network.
+</ParamField>
+
+<ParamField path="rpc_urls" type="array">
+  Array of RPC URLs for automatic fallback. Use this for high availability setups.
+  
+  ```toml
+  rpc_urls = ["https://rpc1.stellar.org", "https://rpc2.stellar.org"]
+  ```
+</ParamField>
+
+<ParamField path="network" type="string" default="testnet">
+  Network identifier. Valid values:
+  - `public` - Mainnet (https://soroban.stellar.org)
+  - `testnet` - Testnet (https://soroban-testnet.stellar.org)
+  - `futurenet` - Futurenet (https://soroban-futurenet.stellar.org)
+  - `standalone` - Local development (http://localhost:8000)
+</ParamField>
+
+<ParamField path="network_passphrase" type="string">
+  Custom network passphrase for private networks. Required when using custom networks.
+  
+  Standard passphrases:
+  - Mainnet: `Public Global Stellar Network ; September 2015`
+  - Testnet: `Test SDF Network ; September 2015`
+</ParamField>
+
+### Simulator settings
+
+<ParamField path="simulator_path" type="string">
+  Custom path to the `erst-sim` binary. If not set, Erst searches:
+  1. Current directory (`./erst-sim`)
+  2. Development path (`./simulator/target/release/erst-sim`)
+  3. System PATH
+</ParamField>
+
+### Logging and debugging
+
+<ParamField path="log_level" type="string" default="info">
+  Unified log level for both Go CLI and Rust simulator.
+  
+  Valid values: `trace`, `debug`, `info`, `warn`, `error`
+</ParamField>
+
+### Storage and caching
+
+<ParamField path="cache_path" type="string" default="~/.erst/cache">
+  Directory for storing transaction traces and snapshots.
+</ParamField>
+
+### Request settings
+
+<ParamField path="request_timeout" type="number" default="15">
+  HTTP request timeout in seconds. Must be between 1 and 300.
+</ParamField>
+
+<ParamField path="rpc_token" type="string">
+  Authentication token for RPC endpoints that require authorization.
+</ParamField>
+
+### Crash reporting
+
+<ParamField path="crash_reporting" type="boolean" default="false">
+  Enable anonymous crash reporting to help improve Erst.
+  
+  When enabled, fatal panics send minimal reports (error message, stack trace, OS/arch, version) to maintainers.
+  
+  <Warning>
+  No transaction data or personal information is ever included.
+  </Warning>
+</ParamField>
+
+<ParamField path="crash_endpoint" type="string" default="https://crash.erst.dev/v1/report">
+  Custom endpoint for crash reports. Only used when `crash_reporting` is enabled and no Sentry DSN is set.
+</ParamField>
+
+<ParamField path="crash_sentry_dsn" type="string">
+  Sentry DSN for crash reporting. Obtain from your Sentry project settings.
+  
+  ```toml
+  crash_sentry_dsn = "https://<key>@<org>.ingest.sentry.io/<project>"
+  ```
+</ParamField>
+
+## Configuration validation
+
+Erst validates your configuration on startup and provides clear error messages:
+
+### Required fields
+
+- `rpc_url` cannot be empty (unless using a named network)
+
+### Network validation
+
+- `network` must be one of: `public`, `testnet`, `futurenet`, `standalone`
+
+### Request timeout validation
+
+- `request_timeout` must be between 1 and 300 seconds
+
+## Default values
+
+When no configuration is provided, Erst uses these defaults:
+
+```json
+{
+  "rpc_url": "https://soroban-testnet.stellar.org",
+  "network": "testnet",
+  "log_level": "info",
+  "cache_path": "~/.erst/cache",
+  "request_timeout": 15,
+  "crash_reporting": false
+}
+```
+
+## Advanced configurations
+
+### Multi-RPC fallback
+
+For production environments, configure multiple RPC endpoints:
+
+```toml
+rpc_urls = [
+  "https://primary.stellar.org",
+  "https://backup.stellar.org",
+  "https://fallback.stellar.org"
+]
+network = "public"
+```
+
+### Development setup
+
+```toml
+rpc_url = "http://localhost:8000/soroban/rpc"
+network = "standalone"
+log_level = "debug"
+simulator_path = "./simulator/target/debug/erst-sim"
+```
+
+### Production security
+
+```toml
+rpc_url = "https://soroban.stellar.org"
+rpc_token = "your-api-token"
+network = "public"
+log_level = "warn"
+crash_reporting = true
+crash_sentry_dsn = "https://key@org.ingest.sentry.io/project"
+```
+
+## Configuration storage
+
+Erst stores additional configuration data in:
+
+- `~/.erst/config.json` - General configuration (JSON format)
+- `~/.erst/networks.json` - Custom network profiles
+- `~/.erst/cache/` - Transaction traces and snapshots
+
+<Info>
+All configuration files use restricted permissions (`0600`) and directories use `0700` for security.
+</Info>
+
+## Viewing current configuration
+
+Use the `erst config` command to view your current configuration:
+
+```bash
+erst config show
+```
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Environment variables" icon="terminal" href="/configuration/environment-variables">
+    Configure Erst using environment variables
+  </Card>
+  <Card title="Custom networks" icon="network-wired" href="/configuration/custom-networks">
+    Set up private and local Stellar networks
+  </Card>
+</CardGroup>

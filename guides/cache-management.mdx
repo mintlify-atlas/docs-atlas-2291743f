@@ -1,0 +1,524 @@
+---
+title: Cache management
+description: Optimize cache usage for faster debugging and offline analysis
+---
+
+Erst maintains a local cache of transaction data and simulation results to improve performance and enable offline analysis. This guide covers cache configuration, maintenance, and optimization strategies.
+
+## Overview
+
+The cache stores:
+
+- Transaction envelopes fetched from RPC
+- Ledger footprint data (read/write sets)
+- Simulation results and traces
+- Contract WASM bytecode
+- Source maps and debug symbols
+
+Caching provides:
+
+- **Faster repeated debugging** of the same transaction
+- **Offline analysis** after initial data fetch
+- **Reduced RPC load** and bandwidth usage
+- **Consistent results** across debugging sessions
+
+## Cache location
+
+Default cache directory:
+
+```
+~/.erst/cache/
+```
+
+Customize with environment variable:
+
+```bash
+export ERST_CACHE_DIR=/path/to/custom/cache
+```
+
+<Info>
+The cache directory is created automatically on first use.
+</Info>
+
+## Cache commands
+
+### Check cache status
+
+View cache size and usage statistics:
+
+```bash
+erst cache status
+```
+
+**Example output:**
+```text
+Cache directory: /home/user/.erst/cache
+Cache size: 342.58 MB
+Files cached: 1,247
+Maximum size: 1.00 GB
+```
+
+If cache exceeds the limit:
+```text
+[!]  Cache size exceeds maximum limit. Run 'erst cache clean' to free space.
+```
+
+### Clean old entries
+
+Remove old cached files using LRU (Least Recently Used) strategy:
+
+```bash
+erst cache clean
+```
+
+**What happens:**
+
+<Steps>
+
+### Identify oldest files
+
+Erst scans the cache and identifies the least recently accessed files.
+
+### Prompt for confirmation
+
+You're asked to confirm before deletion:
+```text
+Will delete 234 files (156.32 MB)
+Continue? (yes/no):
+```
+
+### Delete until target reached
+
+Files are deleted until cache size is reduced to 50% of maximum.
+
+</Steps>
+
+**Skip confirmation:**
+
+```bash
+erst cache clean --force
+```
+
+### Clear all cache
+
+Delete all cached files:
+
+```bash
+erst cache clear
+```
+
+<Warning>
+This action cannot be undone. All cached transaction data will be permanently deleted.
+</Warning>
+
+**Skip confirmation:**
+
+```bash
+erst cache clear --force
+```
+
+## RPC cache management
+
+Erst also maintains a separate SQLite database for RPC fetch results:
+
+```
+~/.erst/cache.db
+```
+
+This cache stores network responses for:
+- Transaction envelopes
+- Ledger entries
+- Contract code
+- Network metadata
+
+### Clean RPC cache by age
+
+Remove entries older than N days:
+
+```bash
+erst cache clean --older-than 7
+```
+
+Example: Remove all entries older than 7 days.
+
+### Clean RPC cache by network
+
+Remove entries for a specific network:
+
+```bash
+erst cache clean --network testnet
+```
+
+Useful when:
+- Testnet resets
+- Switching development focus
+- Freeing space from old test data
+
+### Combine filters
+
+Remove testnet entries older than 30 days:
+
+```bash
+erst cache clean --older-than 30 --network testnet
+```
+
+### Clear all RPC cache
+
+Remove all RPC cache entries:
+
+```bash
+erst cache clean --all
+```
+
+<Note>
+At least one filter must be specified when cleaning RPC cache: `--older-than`, `--network`, or `--all`.
+</Note>
+
+## Cache configuration
+
+### Maximum size
+
+Default maximum cache size: **1 GB**
+
+Configure via code in `internal/cache/cache.go`:
+
+```go
+func DefaultConfig() Config {
+    return Config{
+        MaxSizeBytes: 1 << 30, // 1 GB
+        // ...
+    }
+}
+```
+
+### LRU strategy
+
+When cleaning, Erst:
+
+1. Lists all cached files with access times
+2. Sorts by least recently used
+3. Deletes files until size drops to 50% of maximum
+4. Preserves recently accessed files
+
+### File organization
+
+Cache files are organized by type:
+
+```
+~/.erst/cache/
+├── transactions/
+│   ├── abc123...def.xdr
+│   └── 789def...123.xdr
+├── ledgers/
+│   ├── 12345.json
+│   └── 12346.json
+├── contracts/
+│   ├── CDLZFC3...wasm
+│   └── CAP5UY4...wasm
+└── sourcemaps/
+    ├── CDLZFC3...map
+    └── CAP5UY4...map
+```
+
+## Cache behavior
+
+### When cache is used
+
+Erst uses cached data when:
+
+- Debugging the same transaction multiple times
+- Working offline (no network access)
+- RPC endpoints are slow or rate-limited
+- Session is resumed from saved state
+
+### When cache is bypassed
+
+Erst fetches fresh data when:
+
+- Cache entry doesn't exist
+- Cache entry is corrupted
+- Explicit cache bypass flag is used
+- Network status has changed
+
+### Cache invalidation
+
+Cache entries never expire automatically during use. They're only removed:
+
+- During manual cleaning (`erst cache clean`)
+- When maximum size is exceeded
+- When manually cleared (`erst cache clear`)
+- When LRU cleanup runs
+
+<Info>
+Transaction data on Stellar is immutable, so cached transactions remain valid indefinitely.
+</Info>
+
+## Optimization strategies
+
+### Regular maintenance
+
+Schedule periodic cache cleaning:
+
+```bash
+# Weekly cron job
+0 0 * * 0 erst cache clean --force --older-than 30
+```
+
+Cleans entries older than 30 days every Sunday.
+
+### Network-specific cleanup
+
+After testnet resets:
+
+```bash
+# Clear all testnet data
+erst cache clean --network testnet
+
+# Verify cleanup
+erst cache status
+```
+
+### Disk space management
+
+If running low on disk space:
+
+<Steps>
+
+### Check cache size
+
+```bash
+erst cache status
+```
+
+### Clean aggressively
+
+```bash
+# Remove entries older than 7 days
+erst cache clean --older-than 7 --force
+
+# Or clear everything
+erst cache clear --force
+```
+
+### Reduce maximum size
+
+Modify `DefaultConfig()` in source code to lower the limit.
+
+</Steps>
+
+### Selective retention
+
+Preserve important cached data:
+
+<Steps>
+
+### Backup specific transactions
+
+```bash
+cp ~/.erst/cache/transactions/abc123...def.xdr ~/backups/
+```
+
+### Clean cache
+
+```bash
+erst cache clean --force
+```
+
+### Restore backups
+
+```bash
+cp ~/backups/abc123...def.xdr ~/.erst/cache/transactions/
+```
+
+</Steps>
+
+## Performance impact
+
+### Cache hit vs miss
+
+| Scenario | Time | Network | Use Case |
+|----------|------|---------|----------|
+| Cache hit | ~50ms | None | Instant debugging |
+| Cache miss | ~2-5s | Required | First-time fetch |
+| Slow RPC | ~10-30s | Required | Rate-limited endpoints |
+| Offline | Fails | None | No cached data |
+
+### Storage efficiency
+
+**Typical sizes:**
+
+- Transaction envelope: 1-5 KB
+- Ledger footprint: 10-100 KB
+- Contract WASM: 50-500 KB
+- Source map: 20-200 KB
+- Simulation results: 5-50 KB
+
+**100 cached transactions** ≈ 10-100 MB
+
+**1000 cached transactions** ≈ 100 MB - 1 GB
+
+## Monitoring cache health
+
+### Check for corruption
+
+If you encounter errors loading cached data:
+
+```bash
+# Clear cache and refetch
+erst cache clear --force
+erst debug <tx-hash>  # Refetches from network
+```
+
+### Verify file integrity
+
+Manually inspect cache files:
+
+```bash
+# List cache contents
+ls -lh ~/.erst/cache/transactions/
+
+# Check file sizes (should be non-zero)
+find ~/.erst/cache -type f -size 0
+
+# Remove zero-byte files
+find ~/.erst/cache -type f -size 0 -delete
+```
+
+### Track cache growth
+
+Monitor cache size over time:
+
+```bash
+# Create monitoring script
+#!/bin/bash
+du -sh ~/.erst/cache >> cache-size.log
+date >> cache-size.log
+
+# Run daily
+crontab -e
+# Add: 0 0 * * * /path/to/monitor-cache.sh
+```
+
+## Troubleshooting
+
+### Cache not working
+
+```text
+Error: failed to write cache file
+```
+
+**Solutions:**
+- Check disk space: `df -h`
+- Verify permissions: `ls -la ~/.erst/cache`
+- Create directory manually: `mkdir -p ~/.erst/cache`
+- Check environment variable: `echo $ERST_CACHE_DIR`
+
+### Cache size incorrect
+
+```text
+Cache size: -1 B
+```
+
+**Solutions:**
+- Clear cache and rebuild: `erst cache clear --force`
+- Check for filesystem errors: `dmesg | grep -i error`
+- Verify cache directory exists: `ls ~/.erst/cache`
+
+### Permission denied
+
+```text
+Error: permission denied: ~/.erst/cache
+```
+
+**Solutions:**
+- Fix ownership: `sudo chown -R $USER ~/.erst/cache`
+- Fix permissions: `chmod -R 755 ~/.erst/cache`
+- Check SELinux/AppArmor: `sestatus` or `aa-status`
+
+### Database locked
+
+```text
+Error: database is locked: cache.db
+```
+
+**Solutions:**
+- Close other Erst processes
+- Remove lock file: `rm ~/.erst/cache.db-shm ~/.erst/cache.db-wal`
+- Wait and retry
+
+## Advanced usage
+
+### Pre-populate cache
+
+Fetch multiple transactions into cache:
+
+```bash
+#!/bin/bash
+# Cache common transactions
+for tx in "abc123..." "def456..." "789abc..."; do
+    erst debug $tx > /dev/null 2>&1
+    echo "Cached: $tx"
+done
+```
+
+### Export cache data
+
+Create portable cache archive:
+
+```bash
+# Archive cache
+tar -czf erst-cache-backup.tar.gz ~/.erst/cache/
+
+# Restore on another machine
+tar -xzf erst-cache-backup.tar.gz -C ~/
+```
+
+### Share cache with team
+
+Distribute cache for offline work:
+
+```bash
+# Create shareable cache
+erst debug tx1 tx2 tx3  # Populate cache
+tar -czf team-cache.tar.gz ~/.erst/cache/
+
+# Team members extract
+tar -xzf team-cache.tar.gz -C ~/
+```
+
+## Implementation details
+
+### Source files
+
+Cache management is implemented in:
+
+- `internal/cache/cache.go` - Core cache logic
+- `internal/cmd/cache.go` - CLI commands
+- `internal/rpc/cache.go` - RPC-specific caching
+
+### Key functions
+
+**File cache:**
+- `Manager.GetCacheSize()` - Calculate total cache size
+- `Manager.ListCachedFiles()` - List all cached files
+- `Manager.Clean()` - Run LRU cleanup
+
+**RPC cache:**
+- `CleanByFilter()` - Clean with age/network filters
+- `CleanAll()` - Clear entire RPC cache
+
+**Location:** `internal/cmd/cache.go:26`, `internal/cache/cache.go`
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Working with sessions" icon="floppy-disk" href="/guides/working-with-sessions">
+    Sessions complement caching for persistent debugging
+  </Card>
+  <Card title="Debugging failed transactions" icon="bug" href="/guides/debugging-failed-transactions">
+    Learn how caching speeds up transaction debugging
+  </Card>
+  <Card title="Local WASM replay" icon="microchip" href="/guides/local-wasm-replay">
+    Test locally without relying on cached network data
+  </Card>
+</CardGroup>

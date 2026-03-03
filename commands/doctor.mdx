@@ -1,0 +1,225 @@
+---
+title: erst doctor
+description: Diagnose development environment setup
+---
+
+Check the status of required dependencies and development tools.
+
+## Usage
+
+```bash
+erst doctor [flags]
+```
+
+## Description
+
+The `doctor` command verifies your development environment is correctly configured for Erst. It checks:
+
+- **Go installation**: Verifies Go is installed and version matches `go.mod`
+- **Rust toolchain**: Checks `rustc` and `cargo` are available
+- **Simulator binary**: Locates the `erst-sim` executable
+- **Config files**: Validates TOML syntax in configuration files
+- **RPC endpoint**: Tests connectivity to the configured RPC server
+
+<Info>
+Use this command to troubleshoot installation issues or verify your setup before debugging transactions.
+</Info>
+
+## Flags
+
+<ParamField path="--verbose" type="boolean" default="false">
+  Show detailed diagnostic information including file paths and version checks
+  
+  Alias: `-v`
+</ParamField>
+
+## Examples
+
+<CodeGroup>
+```bash Basic check
+erst doctor
+```
+
+```bash Verbose output
+erst doctor --verbose
+```
+</CodeGroup>
+
+## Output
+
+The command displays a checklist of dependencies:
+
+```
+Erst Environment Diagnostics
+=============================
+
+[OK] Go (go1.21.0)
+[OK] Rust (rustc 1.75.0)
+[OK] Cargo (cargo 1.75.0)
+[OK] Simulator Binary (erst-sim) (local build)
+[OK] TOML config
+[OK] RPC endpoint
+
+[OK] All dependencies are installed and ready!
+```
+
+### Status indicators
+
+- `[OK]` - Dependency is installed and working
+- `[FAIL]` - Dependency is missing or misconfigured
+
+### Failure hints
+
+When a check fails, the doctor provides fix hints:
+
+```
+[FAIL] Go
+  → Install Go from https://go.dev/doc/install (requires Go 1.21+)
+
+[FAIL] Simulator Binary (erst-sim)
+  → Build the simulator: cd simulator && cargo build --release
+```
+
+## Dependency checks
+
+### Go
+
+Verifies:
+- Go is in PATH
+- Version is installed
+- Version matches `go.mod` requirements
+
+**Fix hint**: Install Go from https://go.dev/doc/install
+
+### Rust (rustc)
+
+Verifies:
+- `rustc` is in PATH
+- Version is available
+
+**Fix hint**: Install Rust from https://rustup.rs/ or run:
+```bash
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+```
+
+### Cargo
+
+Verifies:
+- `cargo` is in PATH
+- Version is available
+
+**Fix hint**: Cargo is included with Rust. Install from https://rustup.rs/
+
+### Simulator Binary (erst-sim)
+
+Verifies:
+- Binary exists in standard locations:
+  - `simulator/target/release/erst-sim`
+  - `./erst-sim`
+  - `../simulator/target/release/erst-sim`
+  - In system PATH
+
+**Fix hint**: Build the simulator:
+```bash
+cd simulator && cargo build --release
+```
+
+### TOML config
+
+Verifies:
+- Configuration files (`.erst.toml`, `~/.erst.toml`, `/etc/erst/config.toml`) have valid syntax
+- Non-comment lines contain `=` for key-value pairs
+
+**Fix hint**: Fix syntax in `.erst.toml` or remove the malformed file
+
+### RPC endpoint
+
+Verifies:
+- Configured RPC endpoint is reachable
+- Health check endpoint responds within 5 seconds
+
+**Fix hint**: Set `ERST_RPC_URL` or ensure the default RPC is reachable
+
+## Verbose mode
+
+With `--verbose`, the doctor shows additional information:
+
+```
+Erst Environment Diagnostics
+=============================
+
+[OK] Go (go1.21.0)
+  Path: /usr/local/go/bin/go
+
+[OK] Rust (rustc 1.75.0)
+  Path: /Users/dev/.cargo/bin/rustc
+
+[OK] Cargo (cargo 1.75.0)
+  Path: /Users/dev/.cargo/bin/cargo
+
+[OK] Simulator Binary (erst-sim) (local build)
+  Path: /Users/dev/erst/simulator/target/release/erst-sim
+
+[OK] TOML config
+[OK] RPC endpoint
+
+[OK] All dependencies are installed and ready!
+```
+
+## Exit codes
+
+- `0` - All checks passed
+- `0` - Some checks failed (warnings only, does not exit with error)
+
+## Common issues
+
+### Go version mismatch
+
+**Problem**: `go.mod requests 1.21 but installed 1.20`
+
+**Solution**: Upgrade Go to the required version:
+```bash
+# macOS
+brew upgrade go
+
+# Linux
+# Download from https://go.dev/dl/
+```
+
+### Simulator binary not found
+
+**Problem**: `[FAIL] Simulator Binary (erst-sim)`
+
+**Solution**: Build the Rust simulator:
+```bash
+cd simulator
+cargo build --release
+```
+
+### RPC endpoint unreachable
+
+**Problem**: `[FAIL] RPC endpoint`
+
+**Solution**: Check network connectivity or configure custom RPC:
+```bash
+export ERST_RPC_URL=https://soroban-testnet.stellar.org
+erst doctor
+```
+
+### TOML syntax error
+
+**Problem**: `[FAIL] TOML config (line 5 missing '=')`
+
+**Solution**: Fix the syntax error in `.erst.toml`:
+```toml
+# Before (invalid)
+rpc_url https://example.com
+
+# After (valid)
+rpc_url = "https://example.com"
+```
+
+## Related commands
+
+- [debug](/commands/debug) - Main debugging command that uses these dependencies
+- [cache](/commands/cache) - Manage cached data (uses RPC endpoint)

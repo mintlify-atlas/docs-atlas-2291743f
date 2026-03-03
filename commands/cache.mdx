@@ -1,0 +1,214 @@
+---
+title: erst cache
+description: Manage transaction and simulation cache
+---
+
+Manage the local cache that stores transaction data and simulation results.
+
+## Usage
+
+```bash
+erst cache <subcommand> [flags]
+```
+
+## Description
+
+Caching improves performance and enables offline analysis by storing:
+
+- Transaction envelopes and metadata
+- Simulation results and traces
+- Ledger entries and state
+- RPC responses
+
+<Info>
+Cache location: `~/.erst/cache` (configurable via `ERST_CACHE_DIR` environment variable)
+</Info>
+
+## Subcommands
+
+- [status](#status) - View cache statistics
+- [clean](#clean) - Remove old files using LRU strategy
+- [clear](#clear) - Delete all cached data
+
+## status
+
+Display the current cache size, number of cached files, and disk usage statistics.
+
+### Usage
+
+```bash
+erst cache status
+```
+
+### Output
+
+Shows:
+
+- Cache directory path
+- Total cache size (human-readable)
+- Number of cached files
+- Maximum configured size
+- Warning if cache exceeds limit
+
+### Example output
+
+```
+Cache directory: /home/user/.erst/cache
+Cache size: 145.32 MB
+Files cached: 87
+Maximum size: 500.00 MB
+```
+
+## clean
+
+Remove old cached files using LRU (Least Recently Used) strategy.
+
+### Usage
+
+```bash
+erst cache clean [flags]
+```
+
+### Description
+
+This command:
+
+1. Identifies the oldest cached files based on access time
+2. Prompts for confirmation before deletion (unless `--force`)
+3. Deletes files until cache size is reduced to 50% of maximum
+4. Reports number of files deleted and space freed
+
+### Flags
+
+<ParamField path="--force" type="boolean" default="false">
+  Skip confirmation prompt
+  
+  Alias: `-f`
+</ParamField>
+
+<ParamField path="--older-than" type="int">
+  Remove entries older than N days
+  
+  Only applies to RPC cache (SQLite database).
+</ParamField>
+
+<ParamField path="--network" type="string">
+  Remove entries for a specific network
+  
+  Options: `testnet`, `mainnet`, `futurenet`
+  
+  Only applies to RPC cache.
+</ParamField>
+
+<ParamField path="--all" type="boolean" default="false">
+  Remove all RPC cache entries
+  
+  Only applies to RPC cache (SQLite database).
+</ParamField>
+
+### Examples
+
+<CodeGroup>
+```bash Interactive clean
+erst cache clean
+```
+
+```bash Force clean without prompt
+erst cache clean --force
+```
+
+```bash Clean old RPC entries
+erst cache clean --older-than 7
+```
+
+```bash Clean network-specific entries
+erst cache clean --network testnet
+```
+
+```bash Clean testnet entries older than 30 days
+erst cache clean --older-than 30 --network testnet
+```
+
+```bash Clear all RPC cache
+erst cache clean --all
+```
+</CodeGroup>
+
+## clear
+
+Delete all cached files from the cache directory.
+
+### Usage
+
+```bash
+erst cache clear [flags]
+```
+
+<Warning>
+This action cannot be undone. All cached transaction data and simulation results will be permanently deleted.
+</Warning>
+
+### Flags
+
+<ParamField path="--force" type="boolean" default="false">
+  Skip confirmation prompt
+  
+  Alias: `-f`
+</ParamField>
+
+### Examples
+
+<CodeGroup>
+```bash Interactive clear
+erst cache clear
+```
+
+```bash Force clear without prompt
+erst cache clear --force
+```
+</CodeGroup>
+
+### Confirmation prompt
+
+Without `--force`, prompts:
+
+```
+This will delete ALL cached files in /home/user/.erst/cache
+Are you sure? (yes/no): 
+```
+
+Type `yes` or `y` to confirm.
+
+## Cache types
+
+Erst maintains two separate caches:
+
+### File cache
+
+Stores transaction and simulation data as files:
+
+- Location: `~/.erst/cache/`
+- Format: JSON and XDR files
+- Managed by: `status`, `clean`, `clear`
+
+### RPC cache
+
+Stores RPC responses in SQLite database:
+
+- Location: `~/.erst/cache.db`
+- Format: SQLite database
+- Managed by: `clean --older-than`, `clean --network`, `clean --all`
+
+## Performance impact
+
+Caching provides significant performance benefits:
+
+- **Network requests**: Avoid repeated RPC calls
+- **Simulation**: Reuse ledger state for similar transactions
+- **Offline mode**: Debug without network connectivity
+- **Cost reduction**: Minimize API usage for rate-limited endpoints
+
+## Related commands
+
+- [session](/commands/session) - Manage debugging sessions (separate from cache)
+- [debug](/commands/debug) - Debugging uses cached data when available

@@ -1,0 +1,277 @@
+---
+title: Code standards
+description: Coding conventions and style guidelines for the Erst CLI project
+---
+
+This project enforces strict code quality standards to maintain a clean, maintainable codebase.
+
+## Strict linting policy
+
+Erst uses a **zero-tolerance** approach to code quality:
+
+- No unused variables, imports, or functions
+- No dead code (unless explicitly justified)
+- All warnings treated as errors in CI
+- Fail-fast enforcement across all environments
+
+<Warning>
+  The CI pipeline will fail immediately on any linting warnings. Always run strict linting locally before pushing.
+</Warning>
+
+## Go code standards
+
+### Formatting
+
+All Go code must be formatted with `gofmt` before committing:
+
+```bash
+go fmt ./...
+```
+
+### Linting
+
+Must pass `golangci-lint` without errors. The project uses a minimal but strict configuration:
+
+```bash
+golangci-lint run ./...
+```
+
+<Info>
+  See `.golangci.yml` for the complete configuration. Enabled linters include: `ineffassign`, `govet`, and `typecheck`.
+</Info>
+
+### Naming conventions
+
+- **Exported identifiers**: Use `PascalCase` for types, functions, and constants
+- **Unexported identifiers**: Use `camelCase`
+- **Constants**: Use `UPPER_SNAKE_CASE`
+- **Interfaces**: Should end with `-er` suffix (e.g., `Reader`, `Writer`, `Logger`)
+
+### Error handling
+
+Follow Go's explicit error handling patterns:
+
+```go
+// Always check and handle errors
+if err != nil {
+    return fmt.Errorf("operation failed: %w", err)
+}
+
+// Wrap errors with context
+data, err := fetchData()
+if err != nil {
+    return fmt.Errorf("failed to fetch data: %w", err)
+}
+
+// Never use bare panic() in production code
+```
+
+### Documentation
+
+All exported functions and types must have documentation comments:
+
+```go
+// Logger provides structured logging for diagnostic events.
+// It writes formatted log entries to the configured output.
+type Logger struct {
+    // fields...
+}
+
+// NewLogger creates a new Logger instance with the given configuration.
+// It returns an error if the configuration is invalid.
+func NewLogger(config Config) (*Logger, error) {
+    // implementation...
+}
+```
+
+<Note>
+  Comments should be complete sentences starting with the name of the item being documented.
+</Note>
+
+## Rust code standards
+
+### Formatting
+
+All Rust code must be formatted with `cargo fmt` before committing:
+
+```bash
+cd simulator
+cargo fmt --all
+```
+
+### Linting
+
+Must pass `cargo clippy` with strict settings:
+
+```bash
+cargo clippy --all-targets --release -- -D warnings
+```
+
+The project enforces strict lint levels in `simulator/Cargo.toml`:
+
+```toml
+[lints.rust]
+unused_variables = "deny"
+unused_imports = "deny"
+unused_mut = "deny"
+dead_code = "deny"
+unused_assignments = "deny"
+
+[lints.clippy]
+all = "deny"
+pedantic = "warn"
+nursery = "warn"
+```
+
+### Naming conventions
+
+- **Functions and variables**: Use `snake_case`
+- **Types and traits**: Use `PascalCase`
+- **Constants**: Use `UPPER_SNAKE_CASE`
+
+### Error handling
+
+Prefer `Result<T, E>` over panics:
+
+```rust
+// Good: Return Result for recoverable errors
+fn process_transaction(tx: &Transaction) -> Result<Output, SimulatorError> {
+    let data = fetch_data(tx)
+        .map_err(|e| SimulatorError::FetchFailed(e))?;
+    
+    Ok(Output::new(data))
+}
+
+// Bad: Don't unwrap in production code
+fn process_transaction(tx: &Transaction) -> Output {
+    let data = fetch_data(tx).unwrap(); // Avoid this!
+    Output::new(data)
+}
+```
+
+<Warning>
+  Avoid using `.unwrap()` in production code except for obvious invariants. Prefer `?` operator or explicit error handling.
+</Warning>
+
+### Documentation
+
+Document all public functions with doc comments:
+
+```rust
+/// Simulates a Soroban transaction using the provided envelope.
+///
+/// # Arguments
+/// * `envelope` - The transaction envelope containing the transaction details
+/// * `ledger_state` - The ledger state at the time of the transaction
+///
+/// # Returns
+/// A `Result` containing the simulation output or an error if simulation fails
+///
+/// # Examples
+/// ```
+/// let output = simulate_transaction(&envelope, &state)?;
+/// println!("Result: {:?}", output);
+/// ```
+pub fn simulate_transaction(
+    envelope: &TransactionEnvelope,
+    ledger_state: &LedgerState,
+) -> Result<SimulationOutput, SimulatorError> {
+    // implementation...
+}
+```
+
+## Running strict linting
+
+### Go linting only
+
+```bash
+make lint-strict
+```
+
+This runs:
+- `golangci-lint` with strict settings
+- `go vet` static analysis
+- Maximum issues per linter: 0
+- Maximum same issues: 0
+
+### Rust linting only
+
+```bash
+make rust-lint-strict
+```
+
+This runs:
+- `cargo clippy` with all warnings as errors
+- Pedantic and nursery lints enabled
+- Dead code detection
+- Unused variable detection
+
+### All strict linting
+
+```bash
+make lint-all-strict
+```
+
+Runs both Go and Rust strict linting in sequence.
+
+## Suppressing false positives
+
+Lints should **only** be suppressed when they are objectively false positives.
+
+### When to suppress
+
+- Generated code that cannot be modified
+- External dependencies with unavoidable warnings
+- Legitimate cases where the lint rule doesn't apply
+
+### Go suppression
+
+Use `//nolint` comments sparingly and always with justification:
+
+```go
+//nolint:unused // Kept for future API compatibility
+func futureFunction() {}
+```
+
+### Rust suppression
+
+Use `#[allow]` attributes with clear justification:
+
+```rust
+#[allow(dead_code)] // Required for FFI interface
+fn internal_function() {}
+```
+
+<Warning>
+  Never suppress lints without a clear, documented reason. If you can't explain why it's necessary, fix the code instead.
+</Warning>
+
+## Important guidelines
+
+- **No emojis**: Commit messages and PR titles should not contain emojis
+- **No vague language**: Avoid messages like "fixes stuff" or "updates things"
+- **Clear messages**: Every commit should have a clear, descriptive message
+- **Defensive programming**: Write code defensively, validate inputs, handle edge cases
+- **Lint-free code**: Only suppress linting errors if they are objectively false positives
+
+## Pre-commit hooks
+
+Install pre-commit hooks to catch issues before committing:
+
+```bash
+# Install pre-commit
+pip install pre-commit
+
+# Install the hooks
+pre-commit install
+
+# Run manually on all files
+pre-commit run --all-files
+```
+
+The pre-commit configuration runs:
+- `golangci-lint` with strict settings
+- `go vet`
+- `cargo clippy` with strict settings
+- `cargo fmt` check
+- `go fmt` check

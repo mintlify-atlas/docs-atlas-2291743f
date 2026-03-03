@@ -1,0 +1,217 @@
+---
+title: Transaction debugging
+description: Debug failed Stellar smart contract transactions with detailed execution traces
+---
+
+Transaction debugging is the core feature of Erst that helps you understand why a Stellar smart contract transaction failed. When a Soroban transaction fails on mainnet, you typically receive only a generic XDR error code. Erst bridges the gap between this opaque network error and your source code.
+
+## Basic debugging
+
+Fetch and analyze a transaction from the network:
+
+```bash
+erst debug <transaction-hash> --network testnet
+```
+
+This command:
+1. Fetches the transaction envelope from the Stellar RPC
+2. Retrieves the ledger state at the time of execution
+3. Re-executes the transaction locally in a simulation environment
+4. Displays detailed execution traces and diagnostic events
+
+### Network options
+
+<Tabs>
+  <Tab title="Testnet">
+    Debug transactions on the Stellar testnet:
+    ```bash
+    erst debug <transaction-hash> --network testnet
+    ```
+  </Tab>
+  <Tab title="Mainnet">
+    Debug transactions on the Stellar public network:
+    ```bash
+    erst debug <transaction-hash> --network mainnet
+    ```
+  </Tab>
+  <Tab title="Futurenet">
+    Debug transactions on Stellar futurenet:
+    ```bash
+    erst debug <transaction-hash> --network futurenet
+    ```
+  </Tab>
+</Tabs>
+
+## Offline debugging
+
+Debug transactions without network access by providing a raw XDR envelope:
+
+```bash
+erst debug < tx.xdr
+```
+
+This is useful when:
+- You want to analyze transactions without RPC access
+- You're working with locally simulated transactions
+- You need to debug transactions from archived data
+
+<Note>
+Offline debugging requires the transaction envelope XDR but may have limited ledger state information compared to network-connected debugging.
+</Note>
+
+## Understanding the output
+
+When you debug a transaction, Erst provides:
+
+### Execution trace
+
+A step-by-step breakdown of contract execution:
+
+```
+Step: 0/45
+Time: 15:04:05.000
+Operation: InvokeHostFunction
+Contract: CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC
+Function: transfer
+Arguments: ["Address(...)", "i128(100)"]
+```
+
+### Diagnostic events
+
+Detailed event information from the Stellar host environment:
+
+- Contract calls and returns
+- Host function invocations
+- Authorization checks
+- Storage operations
+- Errors and panics
+
+### Error location
+
+When an error occurs, Erst pinpoints the exact location:
+
+```
+❌ Error: Contract execution failed
+WASM Instruction: i32.load offset=8
+Source: token.rs:45
+```
+
+## Advanced debugging workflows
+
+<Steps>
+  <Step title="Identify the failure point">
+    Run the debug command to see where the transaction failed:
+    ```bash
+    erst debug abc123def456 --network testnet
+    ```
+  </Step>
+  
+  <Step title="Analyze the execution trace">
+    Use the interactive trace viewer to explore the full execution path:
+    ```bash
+    erst debug abc123def456 --interactive
+    ```
+    See [Interactive trace viewer](/features/interactive-trace-viewer) for details.
+  </Step>
+  
+  <Step title="Review diagnostic events">
+    Examine contract calls, host functions, and authorization events to understand what happened.
+  </Step>
+  
+  <Step title="Check source mapping">
+    If your contract was compiled with debug symbols, Erst will show the exact line in your Rust code that failed.
+    See [Source mapping](/features/source-mapping) for details.
+  </Step>
+</Steps>
+
+## Cross-contract debugging
+
+Erst automatically tracks calls across multiple contracts and highlights contract boundaries:
+
+```
+┌─ Contract A: transfer()
+│  └─ Host: require_auth()
+└─ Contract B: mint()
+   ❌ Error: insufficient balance
+```
+
+<Info>
+Cross-contract calls are clearly marked in the trace with visual indicators showing when execution moves from one contract to another.
+</Info>
+
+## Debugging with different verbosity levels
+
+Control the amount of detail in the output:
+
+```bash
+# Verbose output with all diagnostic events
+erst debug <transaction-hash> --verbose
+
+# Quiet output with only errors
+erst debug <transaction-hash> --quiet
+```
+
+## Common debugging scenarios
+
+### Authorization failures
+
+When a transaction fails due to missing authorization:
+
+```bash
+erst debug <transaction-hash> --network testnet
+```
+
+Look for events containing:
+- `require_auth` or `require_auth_for_args`
+- Authorization-related error messages
+- Missing signatures
+
+### Storage errors
+
+When contracts fail to read or write storage:
+
+```bash
+erst debug <transaction-hash> --network testnet
+```
+
+Check for:
+- `get_contract_data` or `put_contract_data` events
+- "not found" or "missing" error messages
+- Empty storage state
+
+### Arithmetic overflows
+
+When calculations fail due to overflow:
+
+```bash
+erst debug <transaction-hash> --network testnet
+```
+
+Look for:
+- WASM trap instructions (i32.add, i64.mul, etc.)
+- "overflow" or "panic" messages
+- Large numeric values
+
+## Comparing network results
+
+Compare execution between different networks:
+
+```bash
+erst debug <transaction-hash> --network testnet --compare mainnet
+```
+
+This helps identify:
+- Protocol version differences
+- Network-specific state
+- Environment configuration issues
+
+<Warning>
+Network comparison requires the same transaction to exist on both networks, which is rare in practice. This is primarily useful for testing and validation.
+</Warning>
+
+## Next steps
+
+- Learn about the [Interactive trace viewer](/features/interactive-trace-viewer) for deep exploration
+- Set up [Source mapping](/features/source-mapping) to see Rust source code locations
+- Use [Performance profiling](/features/performance-profiling) to identify bottlenecks
+- Enable [Offline analysis](/features/offline-analysis) for debugging without network access

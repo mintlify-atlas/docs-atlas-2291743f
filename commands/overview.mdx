@@ -1,0 +1,84 @@
+---
+title: Command reference
+description: Complete reference for all Erst CLI commands
+---
+
+Erst is a specialized developer tool for the Stellar network that helps you debug failed Soroban transactions and analyze smart contract execution.
+
+## Command groups
+
+### Core debugging commands
+
+These commands are the primary tools for debugging transactions:
+
+- [debug](/commands/debug) - Debug failed transactions with detailed error traces
+- [trace](/commands/trace) - Interactive trace navigation and debugging
+
+### Testing and validation commands
+
+Tools for testing contract changes and comparing execution:
+
+- [compare](/commands/compare) - Compare local WASM vs on-chain execution side-by-side
+
+### Session and cache management
+
+Manage debugging sessions and cached data:
+
+- [session](/commands/session) - Save, resume, and manage debugging sessions
+- [cache](/commands/cache) - Manage transaction and simulation cache
+
+### Development tools
+
+Utilities for development environment setup:
+
+- [doctor](/commands/doctor) - Diagnose development environment setup
+
+### Utility commands
+
+Additional tools for advanced workflows:
+
+- [profile](/commands/profile) - Export trace as pprof profile for gas analysis
+- [export](/commands/export) - Export data from the current session
+
+## Global flags
+
+These flags are available on all commands:
+
+<ParamField path="--timestamp" type="int64" default="0">
+  Override the ledger header timestamp (Unix epoch)
+</ParamField>
+
+<ParamField path="--window" type="int64" default="0">
+  Run range simulation across a time window (seconds)
+</ParamField>
+
+<ParamField path="--profile" type="boolean" default="false">
+  Enable CPU/Memory profiling and generate a flamegraph
+</ParamField>
+
+<ParamField path="--profile-format" type="string" default="html">
+  Flamegraph export format: `html` (interactive) or `svg` (raw)
+</ParamField>
+
+## Getting started
+
+The most common workflow is:
+
+1. Debug a transaction to understand what went wrong
+2. Use `erst trace` to navigate the execution interactively
+3. Compare local changes with `erst compare` before deploying
+4. Save sessions for later analysis with `erst session save`
+
+```bash
+# Debug a transaction
+erst debug abc123...def --network testnet
+
+# View interactive trace
+erst trace execution.json
+
+# Compare local changes
+erst compare abc123...def --wasm ./contract.wasm
+
+# Save session for later
+erst session save
+```

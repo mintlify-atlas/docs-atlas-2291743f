@@ -1,0 +1,571 @@
+---
+title: Troubleshooting
+description: Common issues and solutions for Erst CLI
+---
+
+## Common issues
+
+### Simulator binary not found
+
+<Accordion title="Error: erst-sim not found">
+**Symptom**: Error message indicating the simulator binary cannot be located.
+
+**Causes**:
+- Simulator binary not built
+- Binary not in expected location
+- Incorrect path configuration
+
+**Solution**:
+
+<Steps>
+  <Step title="Build the simulator">
+    ```bash
+    cd simulator
+    cargo build --release
+    cd ..
+    ```
+  </Step>
+  
+  <Step title="Verify binary exists">
+    ```bash
+    ls -la simulator/target/release/erst-sim
+    ```
+  </Step>
+  
+  <Step title="Set environment variable">
+    ```bash
+    export ERST_SIM_PATH=/path/to/erst-sim
+    ```
+  </Step>
+  
+  <Step title="Or use flag override">
+    ```bash
+    erst debug --sim-path /path/to/erst-sim <tx-hash>
+    ```
+  </Step>
+</Steps>
+</Accordion>
+
+### Invalid JSON from simulator
+
+<Accordion title="Error: Invalid JSON response">
+**Symptom**: Malformed JSON response from the Rust simulator.
+
+**Causes**:
+- Malformed simulation request
+- XDR encoding issues
+- Simulator crash or panic
+
+**Solution**:
+
+1. **Check XDR encoding**:
+   ```bash
+   # Verify XDR is valid Base64
+   echo "AAAA..." | base64 -d > /dev/null
+   ```
+
+2. **Enable debug mode**:
+   ```bash
+   erst debug --debug <tx-hash>
+   ```
+
+3. **Check simulator logs**:
+   Look for panic messages or stack traces in stderr.
+
+4. **Validate request format**:
+   Ensure the request matches the expected schema:
+   ```json
+   {
+     "envelope_xdr": "valid-base64",
+     "result_meta_xdr": "valid-base64",
+     "ledger_entries": {}
+   }
+   ```
+</Accordion>
+
+### Ledger entry decode error
+
+<Accordion title="Error: Failed to decode ledger entry">
+**Symptom**: Error decoding ledger state snapshot.
+
+**Causes**:
+- Incorrect ledger state snapshot
+- Wrong ledger sequence number
+- Corrupted ledger data
+
+**Solution**:
+
+1. **Verify transaction block number**:
+   ```bash
+   curl https://horizon-testnet.stellar.org/transactions/<tx-hash>
+   ```
+
+2. **Check ledger sequence**:
+   Ensure you're fetching state from the correct ledger:
+   ```bash
+   # Get transaction ledger
+   TX_LEDGER=$(curl -s https://horizon-testnet.stellar.org/transactions/<tx-hash> | jq .ledger)
+   
+   # Fetch ledger entries at that sequence
+   curl "https://soroban-testnet.stellar.org/" \
+     -X POST \
+     -H "Content-Type: application/json" \
+     -d '{
+       "jsonrpc": "2.0",
+       "id": 1,
+       "method": "getLedgerEntries",
+       "params": {
+         "keys": ["..."],
+         "ledgerSeq": '$TX_LEDGER'
+       }
+     }'
+   ```
+
+3. **Validate XDR format**:
+   Test XDR decoding separately:
+   ```bash
+   stellar xdr decode --type LedgerEntry "AAAA..."
+   ```
+</Accordion>
+
+### Horizon API timeout
+
+<Accordion title="Error: Horizon request timeout">
+**Symptom**: Network timeout when fetching transaction data.
+
+**Causes**:
+- Network latency or connectivity issues
+- Horizon endpoint down or slow
+- Rate limiting
+
+**Solution**:
+
+1. **Check Horizon status**:
+   ```bash
+   curl https://horizon-testnet.stellar.org/
+   ```
+
+2. **Try different network**:
+   ```bash
+   erst debug --network futurenet <tx-hash>
+   ```
+
+3. **Check network connectivity**:
+   ```bash
+   ping horizon-testnet.stellar.org
+   ```
+
+4. **Verify rate limits**:
+   Check response headers for rate limit information:
+   ```bash
+   curl -I https://horizon-testnet.stellar.org/transactions/<tx-hash>
+   ```
+
+5. **Use custom timeout**:
+   Increase request timeout if needed (future feature).
+</Accordion>
+
+## Debugging workflow issues
+
+### Transaction not found
+
+<Accordion title="Error: Transaction not found on network">
+**Symptom**: Transaction hash not found in Horizon API.
+
+**Causes**:
+- Invalid transaction hash
+- Transaction on different network
+- Very recent transaction not yet indexed
+
+**Solution**:
+
+1. **Verify transaction hash**:
+   Check the hash is 64 hexadecimal characters.
+
+2. **Check correct network**:
+   ```bash
+   # Try testnet
+   erst debug --network testnet <tx-hash>
+   
+   # Try mainnet
+   erst debug --network mainnet <tx-hash>
+   ```
+
+3. **Wait for indexing**:
+   For very recent transactions, wait 10-30 seconds and retry.
+
+4. **Query directly**:
+   ```bash
+   curl https://horizon-testnet.stellar.org/transactions/<tx-hash>
+   ```
+</Accordion>
+
+### Simulation produces different result
+
+<Accordion title="Issue: Simulation result differs from on-chain result">
+**Symptom**: Local simulation produces different output than the actual on-chain transaction.
+
+**Causes**:
+- State snapshot timing mismatch
+- Protocol version difference
+- Ledger state inconsistency
+
+**Solution**:
+
+1. **Verify exact ledger state**:
+   Ensure ledger entries are from the same sequence as the transaction.
+
+2. **Check protocol version**:
+   ```bash
+   # Get ledger protocol version
+   curl https://horizon-testnet.stellar.org/ledgers/<ledger-seq>
+   ```
+
+3. **Compare transaction metadata**:
+   ```bash
+   # Extract result meta from Horizon
+   curl https://horizon-testnet.stellar.org/transactions/<tx-hash> \
+     | jq -r .result_meta_xdr
+   ```
+
+4. **Enable verbose logging**:
+   ```bash
+   erst debug --debug --verbose <tx-hash>
+   ```
+</Accordion>
+
+### Interactive trace issues
+
+<Accordion title="Error: Interactive mode crashes or displays incorrectly">
+**Symptom**: Terminal UI crashes, displays incorrectly, or keyboard shortcuts don't work.
+
+**Causes**:
+- Terminal compatibility issues
+- Insufficient terminal size
+- Color support problems
+
+**Solution**:
+
+1. **Check terminal size**:
+   ```bash
+   # Interactive mode requires minimum 80x24
+   tput cols  # Should be >= 80
+   tput lines # Should be >= 24
+   ```
+
+2. **Test terminal compatibility**:
+   ```bash
+   # Try with different TERM setting
+   TERM=xterm-256color erst debug -i <tx-hash>
+   ```
+
+3. **Disable colors if needed**:
+   ```bash
+   NO_COLOR=1 erst debug -i <tx-hash>
+   ```
+
+4. **Use non-interactive mode**:
+   ```bash
+   # Fall back to standard output
+   erst debug <tx-hash>
+   ```
+</Accordion>
+
+## Performance issues
+
+### Slow simulation execution
+
+<Accordion title="Issue: Simulation takes too long">
+**Symptom**: Simulation execution time is unacceptably slow.
+
+**Causes**:
+- Large contract state
+- Complex transaction with many operations
+- Network latency fetching data
+- Inefficient contract code
+
+**Solution**:
+
+1. **Profile the execution**:
+   ```bash
+   erst debug --profile <tx-hash>
+   ```
+
+2. **Check state fetch time**:
+   Enable timing metrics:
+   ```bash
+   erst debug --debug <tx-hash>
+   ```
+
+3. **Optimize network requests**:
+   - Use closer Horizon endpoint
+   - Cache ledger entries locally
+   - Use JSON-RPC for batch queries
+
+4. **Analyze flamegraph**:
+   Generate and review interactive flamegraph:
+   ```bash
+   erst debug --profile --profile-format html <tx-hash>
+   # Open <tx-hash>.flamegraph.html in browser
+   ```
+</Accordion>
+
+### High memory usage
+
+<Accordion title="Issue: Excessive memory consumption">
+**Symptom**: Erst process uses too much memory.
+
+**Causes**:
+- Large ledger state
+- Memory leak in simulator
+- Many concurrent operations
+
+**Solution**:
+
+1. **Check memory usage**:
+   ```bash
+   # Monitor memory during execution
+   /usr/bin/time -v erst debug <tx-hash>
+   ```
+
+2. **Limit concurrent operations**:
+   Reduce parallelism if using daemon mode.
+
+3. **Check for leaks**:
+   ```bash
+   # Run with valgrind (if available)
+   valgrind --leak-check=full ./erst debug <tx-hash>
+   ```
+
+4. **Report memory leaks**:
+   If persistent, report with memory profile:
+   ```bash
+   go test -memprofile=mem.prof ./...
+   go tool pprof mem.prof
+   ```
+</Accordion>
+
+## HSM and signing issues
+
+### PKCS#11 module not found
+
+<Accordion title="Error: Failed to load PKCS#11 module">
+**Symptom**: Cannot load HSM PKCS#11 library.
+
+**Solution**:
+
+```bash
+# Verify module path
+ls -la /usr/lib/libykcs11.so
+
+# Install YubiKey manager
+sudo apt-get install yubikey-manager
+# or
+brew install yubikey-manager
+
+# Set correct path
+export ERST_PKCS11_MODULE=/usr/lib/x86_64-linux-gnu/libykcs11.so
+```
+</Accordion>
+
+### HSM not detected
+
+<Accordion title="Error: No slots found">
+**Symptom**: HSM device not detected.
+
+**Solution**:
+
+```bash
+# Check if HSM is connected
+yubico-piv-tool -a status
+
+# Verify permissions
+sudo usermod -a -G plugdev $USER
+# Log out and back in
+
+# List available slots
+pkcs11-tool --module /usr/lib/libykcs11.so -L
+```
+</Accordion>
+
+### PIN incorrect
+
+<Accordion title="Error: Failed to login: 0x1000">
+**Symptom**: HSM PIN authentication failed.
+
+**Solution**:
+
+```bash
+# Verify PIN
+yubico-piv-tool -a verify-pin -P 123456
+
+# Reset PIN if needed (requires PUK)
+yubico-piv-tool -a change-pin -P 123456 -N 654321
+
+# Unblock PIN with PUK
+yubico-piv-tool -a unblock-pin -P 12345678 -N 123456
+```
+</Accordion>
+
+### Key not found in HSM
+
+<Accordion title="Error: Private key not found in HSM">
+**Symptom**: Specified key not found on HSM.
+
+**Solution**:
+
+```bash
+# List available keys
+yubico-piv-tool -a list
+
+# List objects in token
+pkcs11-tool --module /usr/lib/libykcs11.so -O
+
+# Generate key if needed
+yubico-piv-tool -a generate -s 9a -o pubkey.pem -A ECCP256
+
+# Verify key label matches
+pkcs11-tool --module /usr/lib/libykcs11.so -O --label "MySigningKey"
+```
+</Accordion>
+
+## Metrics and observability issues
+
+### Metrics not appearing
+
+<Accordion title="Issue: Prometheus metrics not exposed">
+**Symptom**: `/metrics` endpoint returns empty or no metrics.
+
+**Solution**:
+
+1. **Verify daemon is running**:
+   ```bash
+   curl http://localhost:8080/health
+   ```
+
+2. **Check metrics endpoint**:
+   ```bash
+   curl http://localhost:8080/metrics
+   ```
+
+3. **Trigger some activity**:
+   Metrics appear only after first use:
+   ```bash
+   erst debug <tx-hash>
+   ```
+
+4. **Check Prometheus scrape config**:
+   Verify target is configured correctly in `prometheus.yml`.
+</Accordion>
+
+### Traces not appearing in Jaeger
+
+<Accordion title="Issue: OpenTelemetry traces not visible">
+**Symptom**: No traces appearing in Jaeger UI.
+
+**Solution**:
+
+1. **Verify tracing is enabled**:
+   ```bash
+   erst debug --tracing <tx-hash>
+   ```
+
+2. **Check OTLP endpoint**:
+   ```bash
+   curl http://localhost:4318/v1/traces
+   ```
+
+3. **Verify Jaeger is running**:
+   ```bash
+   docker ps | grep jaeger
+   ```
+
+4. **Test with curl**:
+   Send test trace to verify endpoint:
+   ```bash
+   curl -X POST http://localhost:4318/v1/traces \
+     -H "Content-Type: application/json" \
+     -d '{"resourceSpans": []}'
+   ```
+
+5. **Check for errors**:
+   Enable debug logging:
+   ```bash
+   OTEL_LOG_LEVEL=debug erst debug --tracing <tx-hash>
+   ```
+</Accordion>
+
+## Validation errors
+
+### Schema validation failures
+
+<Accordion title="Error: Validation failed for simulation request">
+**Symptom**: Request validation errors before simulation.
+
+**Causes**:
+- Missing required fields
+- Invalid Base64 encoding
+- Malformed XDR data
+
+**Solution**:
+
+1. **Check required fields**:
+   ```json
+   {
+     "envelope_xdr": "required",
+     "result_meta_xdr": "required",
+     "ledger_entries": {}
+   }
+   ```
+
+2. **Validate Base64 encoding**:
+   ```bash
+   echo "AAAA..." | base64 -d > /dev/null && echo "Valid" || echo "Invalid"
+   ```
+
+3. **Test XDR decoding**:
+   ```bash
+   stellar xdr decode --type TransactionEnvelope "AAAA..."
+   ```
+
+4. **Enable strict validation**:
+   Use validator in strict mode for detailed errors:
+   ```bash
+   erst debug --strict-validation <tx-hash>
+   ```
+</Accordion>
+
+## Getting help
+
+<Info>
+If you encounter an issue not covered in this guide:
+
+1. **Check GitHub Issues**: Search for similar problems at https://github.com/dotandev/hintents/issues
+2. **Enable debug mode**: Run with `--debug` flag to get detailed logs
+3. **Collect diagnostics**: Include version info, error messages, and reproduction steps
+4. **Report the issue**: Create a new GitHub issue with full details
+</Info>
+
+### Diagnostic information
+
+When reporting issues, include:
+
+```bash
+# Version information
+erst version
+
+# System information
+uname -a
+go version
+cargo --version
+
+# Error output
+erst debug --debug <tx-hash> 2>&1 | tee debug.log
+
+# Environment variables
+env | grep ERST_
+```
+
+<Warning>
+Never share private keys, HSM PINs, or sensitive credentials when reporting issues. Redact any sensitive information from logs and diagnostics.
+</Warning>

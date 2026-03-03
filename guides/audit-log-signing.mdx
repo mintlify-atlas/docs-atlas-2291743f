@@ -1,0 +1,591 @@
+---
+title: Audit log signing
+description: Generate cryptographically signed audit logs from simulation results using software keys or hardware security modules
+---
+
+Erst can generate signed audit logs that provide cryptographic proof of simulation results. This is essential for compliance, forensics, and maintaining tamper-evident records of transaction analysis.
+
+## Overview
+
+Audit log signing creates a cryptographically signed record containing:
+
+- Transaction hash
+- Simulation results (events, logs, traces)
+- Timestamp
+- Digital signature
+- Public key for verification
+- Optional hardware attestation
+
+Audit logs provide:
+
+- **Tamper evidence**: Any modification invalidates the signature
+- **Non-repudiation**: Proof that a specific key signed the data
+- **Compliance**: Auditable trail for regulatory requirements
+- **Hardware attestation**: Proof that signing keys are HSM-protected
+
+## Signing methods
+
+Erst supports two signing methods:
+
+<CardGroup cols={2}>
+  <Card title="Software signing" icon="key">
+    Uses Ed25519 private keys stored in PEM format
+    
+    - Fast and convenient
+    - Suitable for development
+    - Keys can be backed up
+  </Card>
+  <Card title="HSM signing" icon="shield">
+    Uses hardware security modules via PKCS#11
+    
+    - Production-grade security
+    - Keys never leave hardware
+    - Compliance-ready
+  </Card>
+</CardGroup>
+
+## Software signing
+
+Sign audit logs using an Ed25519 private key.
+
+### Generate a signing key
+
+Create an Ed25519 key pair:
+
+```bash
+# Generate private key
+openssl genpkey -algorithm ed25519 -out ed25519-private-key.pem
+
+# Extract public key
+openssl pkey -in ed25519-private-key.pem -pubout -out ed25519-public-key.pem
+```
+
+<Warning>
+Protect your private key file with restricted permissions:
+```bash
+chmod 600 ed25519-private-key.pem
+```
+</Warning>
+
+### Sign with environment variable
+
+Provide the private key via environment variable:
+
+```bash
+export ERST_AUDIT_PRIVATE_KEY_PEM="$(cat ./ed25519-private-key.pem)"
+
+node dist/index.js audit:sign \
+  --payload '{"input":{},"state":{},"events":[],"timestamp":"2026-01-01T00:00:00.000Z"}'
+```
+
+### Sign with CLI flag
+
+Provide the private key directly:
+
+```bash
+node dist/index.js audit:sign \
+  --payload '{"input":{},"state":{},"events":[],"timestamp":"2026-01-01T00:00:00.000Z"}' \
+  --software-private-key "$(cat ./ed25519-private-key.pem)"
+```
+
+<Note>
+The `audit:sign` command is part of the TypeScript bindings. For Go CLI integration, see the implementation in `internal/cmd/audit.go`.
+</Note>
+
+## HSM signing (PKCS#11)
+
+Sign audit logs using a hardware security module.
+
+### Prerequisites
+
+Install PKCS#11 provider:
+
+<CodeGroup>
+
+```bash YubiKey
+# Install YubiKey manager
+sudo apt-get install yubikey-manager
+# or on macOS:
+brew install ykman
+
+# Verify PKCS#11 module
+ls /usr/lib/x86_64-linux-gnu/libykcs11.so
+```
+
+```bash SoftHSM (testing)
+# Install SoftHSM
+sudo apt-get install softhsm2
+
+# Initialize token
+softhsm2-util --init-token --free --label mytoken --pin 1234 --so-pin 1234
+
+# Generate key
+softhsm2-util --generate-key --algorithm ed25519 --label mykey --token mytoken
+```
+
+</CodeGroup>
+
+### Configure environment
+
+Set required environment variables:
+
+```bash
+# PKCS#11 module path
+export ERST_PKCS11_MODULE=/usr/lib/x86_64-linux-gnu/libykcs11.so
+
+# PIN for accessing the HSM
+export ERST_PKCS11_PIN=123456
+
+# Key identifier (choose ONE method):
+# Option 1: Key label
+export ERST_PKCS11_KEY_LABEL=erst-audit-ed25519
+
+# Option 2: Key ID (hex)
+export ERST_PKCS11_KEY_ID=01
+
+# Option 3: YubiKey PIV slot
+export ERST_PKCS11_PIV_SLOT=9a  # 9a, 9c, 9d, 9e, 82-95, f9
+
+# Public key for verification (SPKI PEM format)
+export ERST_PKCS11_PUBLIC_KEY_PEM="$(cat ./ed25519-public-key-spki.pem)"
+```
+
+<Accordion title="Optional environment variables">
+```bash
+# Token label (alternative to slot index)
+export ERST_PKCS11_TOKEN_LABEL="YubiKey PIV"
+
+# Slot index (numeric)
+export ERST_PKCS11_SLOT=0
+```
+</Accordion>
+
+### Sign with HSM
+
+Generate a signed audit log:
+
+```bash
+node dist/index.js audit:sign \
+  --hsm-provider pkcs11 \
+  --payload '{"input":{},"state":{},"events":[],"timestamp":"2026-01-01T00:00:00.000Z"}'
+```
+
+The command outputs signed JSON to stdout:
+
+```json
+{
+  "version": "1.1.0",
+  "timestamp": "2026-03-03T10:30:45.123Z",
+  "transaction_hash": "abc123...",
+  "trace_hash": "def456...",
+  "signature": "789abc...",
+  "public_key": "012def...",
+  "payload": {
+    "envelope_xdr": "...",
+    "result_meta_xdr": "...",
+    "events": [...],
+    "logs": [...]
+  },
+  "hardware_attestation": {
+    "certificates": [...],
+    "token_info": "YubiKey PIV",
+    "key_non_exportable": true,
+    "retrieved_at": "2026-03-03T10:30:45.123Z"
+  }
+}
+```
+
+## Hardware attestation
+
+HSM signing can include hardware attestation proving the signing key is hardware-protected.
+
+### Attestation data
+
+When signing with an HSM, the audit log includes:
+
+- **Certificates**: X.509 certificate chain (leaf to root)
+- **Token info**: HSM device information
+- **Key non-exportable**: Confirmation that the key cannot be extracted
+- **Retrieved timestamp**: When attestation was captured
+
+### Verification
+
+The attestation is included in the signature hash, so:
+
+- Removing attestation invalidates the signature
+- Modifying attestation invalidates the signature
+- Attestation proves the key is HSM-protected
+
+<Note>
+Hardware attestation is optional but recommended for high-security environments where you need cryptographic proof that keys are hardware-protected.
+</Note>
+
+## Audit log structure
+
+### Version 1.1.0 schema
+
+```typescript
+interface AuditLog {
+  version: string;                          // Schema version ("1.1.0")
+  timestamp: string;                        // ISO 8601 timestamp
+  transaction_hash: string;                 // Transaction hash (hex)
+  trace_hash: string;                       // SHA256 hash of payload (hex)
+  signature: string;                        // Ed25519 signature (hex)
+  public_key: string;                       // Ed25519 public key (hex)
+  payload: Payload;                         // Simulation results
+  hardware_attestation?: HardwareAttestation; // Optional HSM attestation
+}
+
+interface Payload {
+  envelope_xdr: string;     // Base64 transaction envelope
+  result_meta_xdr: string;  // Base64 result metadata
+  events: string[];         // Diagnostic events
+  logs: string[];           // Execution logs
+}
+
+interface HardwareAttestation {
+  certificates: Certificate[];  // X.509 chain (leaf to root)
+  token_info: string;           // HSM device info
+  key_non_exportable: boolean;  // Key protection status
+  retrieved_at: string;         // ISO 8601 timestamp
+}
+```
+
+### Hash computation
+
+The `trace_hash` is computed as:
+
+```text
+trace_hash = SHA256(JSON.stringify({
+  payload: <payload>,
+  hardware_attestation: <attestation>  // If present
+}))
+```
+
+The signature is:
+
+```text
+signature = Ed25519.sign(private_key, trace_hash)
+```
+
+## Verification
+
+Verify an audit log's integrity and signature:
+
+### Programmatic verification
+
+```typescript
+import { VerifyAuditLog } from './audit';
+
+const auditLog: AuditLog = JSON.parse(auditLogJson);
+const isValid = await VerifyAuditLog(auditLog);
+
+if (isValid) {
+  console.log('✓ Audit log signature is valid');
+} else {
+  console.log('✗ Audit log signature is INVALID');
+}
+```
+
+### Manual verification
+
+<Steps>
+
+### Extract public key
+
+```bash
+echo "<public_key_hex>" | xxd -r -p > public_key.bin
+```
+
+### Reconstruct trace hash
+
+```bash
+# Extract payload + attestation
+jq '{payload: .payload, hardware_attestation: .hardware_attestation}' audit-log.json \
+  | openssl dgst -sha256 -hex
+```
+
+### Verify signature
+
+```bash
+openssl pkeyutl \
+  -verify \
+  -pubin -inkey public_key.pem \
+  -sigfile signature.bin \
+  -in trace_hash.bin
+```
+
+</Steps>
+
+### Verification results
+
+- **Valid**: Hash matches and signature verifies
+- **Invalid**: Payload was modified, signature is wrong, or key is incorrect
+- **Attestation removed**: Hash won't match if attestation was stripped
+
+## YubiKey PIV integration
+
+Use YubiKey devices for HSM signing.
+
+### PIV slots
+
+YubiKey PIV supports multiple key slots:
+
+| Slot | Purpose | Use Case |
+|------|---------|----------|
+| 9a | PIV Authentication | General signing |
+| 9c | Digital Signature | Document signing |
+| 9d | Key Management | Encryption |
+| 9e | Card Authentication | Low-security auth |
+| 82-95 | Retired Slots | Key rotation |
+| f9 | Attestation | Key attestation |
+
+**Recommended for audit logs:** Slot `9c` (Digital Signature)
+
+### Generate key on YubiKey
+
+```bash
+# Generate Ed25519 key in slot 9c
+yubico-piv-tool -a generate -s 9c -o public_key.pem -A ECCP256
+
+# Set slot to require PIN
+yubico-piv-tool -a set-mgm-key --new-key <new-management-key>
+```
+
+### Configure for Erst
+
+```bash
+export ERST_PKCS11_MODULE=/usr/lib/x86_64-linux-gnu/libykcs11.so
+export ERST_PKCS11_PIN=123456
+export ERST_PKCS11_PIV_SLOT=9c
+export ERST_PKCS11_PUBLIC_KEY_PEM="$(cat ./public_key.pem)"
+
+node dist/index.js audit:sign --hsm-provider pkcs11 --payload '...'
+```
+
+See [docs/pkcs11-yubikey.md](https://github.com/dotandev/hintents/blob/main/docs/pkcs11-yubikey.md) for detailed YubiKey setup.
+
+## Common workflows
+
+### Generate audit log after debugging
+
+<Steps>
+
+### Debug transaction
+
+```bash
+erst debug abc123...def --network mainnet
+```
+
+### Extract simulation results
+
+Simulation results are stored in the active session.
+
+### Generate signed audit log
+
+```bash
+# Using software key
+export ERST_AUDIT_PRIVATE_KEY_PEM="$(cat ./key.pem)"
+node dist/index.js audit:sign \
+  --payload "$(erst session export-payload)" \
+  > audit-log.json
+```
+
+### Store audit log
+
+```bash
+# Save to compliance archive
+cp audit-log.json /archives/2026-03-03-abc123.json
+```
+
+</Steps>
+
+### Batch audit log generation
+
+Generate audit logs for multiple transactions:
+
+```bash
+#!/bin/bash
+# batch-audit.sh
+
+export ERST_AUDIT_PRIVATE_KEY_PEM="$(cat ./key.pem)"
+
+for tx in "abc123..." "def456..." "789abc..."; do
+  echo "Processing $tx..."
+  
+  # Debug transaction
+  erst debug "$tx" --network mainnet
+  
+  # Generate audit log
+  node dist/index.js audit:sign \
+    --payload "$(erst session export-payload)" \
+    > "audit-log-$tx.json"
+    
+  echo "✓ Audit log saved: audit-log-$tx.json"
+done
+```
+
+### Verify archived audit logs
+
+Check integrity of stored logs:
+
+```bash
+#!/bin/bash
+# verify-archives.sh
+
+for log in /archives/*.json; do
+  echo "Verifying $log..."
+  
+  if node dist/index.js audit:verify --log "$log"; then
+    echo "✓ Valid"
+  else
+    echo "✗ INVALID"
+    exit 1
+  fi
+done
+
+echo "All audit logs verified successfully"
+```
+
+## Security best practices
+
+<Accordion title="Protect private keys">
+**For software keys:**
+- Store with restricted permissions: `chmod 600 key.pem`
+- Never commit to version control
+- Use environment variables, not hardcoded paths
+- Rotate keys periodically
+- Back up securely (encrypted storage)
+
+**For HSM keys:**
+- Never export private keys
+- Use strong PINs (not default PINs)
+- Enable PIN retry limits
+- Physical security for HSM devices
+- Audit HSM access logs
+</Accordion>
+
+<Accordion title="Use HSM for production">
+Software keys are convenient for development, but production audit logs should use HSM:
+
+- Keys cannot be extracted
+- Tamper-evident hardware
+- Compliance-ready (FIPS 140-2)
+- Hardware attestation available
+- Centralized key management
+</Accordion>
+
+<Accordion title="Include hardware attestation">
+When using HSM, always include attestation:
+
+- Proves keys are hardware-protected
+- Cannot be forged
+- Required for high-assurance compliance
+- Covered by signature (tamper-evident)
+</Accordion>
+
+<Accordion title="Archive audit logs securely">
+- Store in append-only storage
+- Use write-once media for immutability
+- Encrypt at rest
+- Replicate to multiple locations
+- Test restoration procedures
+- Document retention policies
+</Accordion>
+
+## Troubleshooting
+
+### Invalid signature
+
+```text
+Error: audit log signature verification failed
+```
+
+**Solutions:**
+- Verify you're using the correct public key
+- Check audit log wasn't modified
+- Ensure payload format matches schema version
+- Re-generate audit log if corrupted
+
+### HSM not detected
+
+```text
+Error: failed to initialize PKCS#11 module
+```
+
+**Solutions:**
+- Check PKCS#11 module path: `ls $ERST_PKCS11_MODULE`
+- Install HSM drivers/software
+- Verify HSM is connected: `yubico-piv-tool -a status`
+- Check permissions: `sudo usermod -a -G plugdev $USER`
+
+### PIN incorrect
+
+```text
+Error: CKR_PIN_INCORRECT
+```
+
+**Solutions:**
+- Verify PIN is correct
+- Check PIN hasn't been locked (retry limit)
+- Reset PIN if needed (requires PUK)
+- Use correct PIN for the token
+
+### Key not found in HSM
+
+```text
+Error: private key not found in HSM
+```
+
+**Solutions:**
+- List available keys: `yubico-piv-tool -a list`
+- Verify key label or ID is correct
+- Check you're using the right slot
+- Generate key if it doesn't exist
+
+## Implementation details
+
+### Source files
+
+Audit log signing is implemented in:
+
+- `internal/cmd/audit.go` - Go implementation
+- `internal/signer/` - Signer interface
+- `internal/signer/memory.go` - Software signer
+- `internal/signer/pkcs11.go` - HSM signer
+
+### Key functions
+
+**Audit log generation:**
+- `Generate()` - Legacy function (software key)
+- `GenerateWithSigner()` - Generic signer interface
+- `VerifyAuditLog()` - Verify signature and hash
+
+**Location:** `internal/cmd/audit.go:73`, `internal/cmd/audit.go:84`, `internal/cmd/audit.go:143`
+
+### Signer interface
+
+```go
+type Signer interface {
+    Sign(data []byte) ([]byte, error)
+    PublicKey() ([]byte, error)
+}
+```
+
+Implementations:
+- `InMemorySigner` - Ed25519 software signing
+- `Pkcs11Signer` - PKCS#11 HSM signing
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="HSM integration guide" icon="shield" href="/advanced/hsm-integration">
+    Detailed HSM setup and configuration
+  </Card>
+  <Card title="Working with sessions" icon="floppy-disk" href="/guides/working-with-sessions">
+    Save debugging context for audit log generation
+  </Card>
+  <Card title="Debugging failed transactions" icon="bug" href="/guides/debugging-failed-transactions">
+    Generate simulation results for signing
+  </Card>
+</CardGroup>

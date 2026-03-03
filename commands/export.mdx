@@ -1,0 +1,305 @@
+---
+title: erst export
+description: Export data from the current session
+---
+
+Export debugging data, such as state snapshots and memory dumps, from the currently active session.
+
+## Usage
+
+```bash
+erst export [flags]
+erst export decode-memory [flags]
+```
+
+## Description
+
+The `export` command allows you to extract and save debugging data from an active session for:
+
+- Offline analysis
+- Sharing with team members
+- Integration with other tools
+- Creating reproducible test fixtures
+- Memory forensics
+
+<Warning>
+You must run `erst debug <tx-hash>` first to create an active session before using this command.
+</Warning>
+
+## Subcommands
+
+- [export](#export) - Export state snapshot
+- [decode-memory](#decode-memory) - Decode and print linear memory dump
+
+## export
+
+Export the current session's ledger state and optionally WASM linear memory to a JSON snapshot file.
+
+### Flags
+
+<ParamField path="--snapshot" type="string" required>
+  Output file for JSON snapshot
+  
+  The snapshot will contain all ledger entries accessed during the transaction.
+</ParamField>
+
+<ParamField path="--include-memory" type="boolean" default="false">
+  Include WASM linear memory dump from simulation response
+  
+  Only available if the simulator was configured to capture memory.
+</ParamField>
+
+### Examples
+
+<CodeGroup>
+```bash Export ledger state
+erst debug abc123...def
+erst export --snapshot state.json
+```
+
+```bash Export with memory
+erst debug abc123...def
+erst export --snapshot state.json --include-memory
+```
+</CodeGroup>
+
+### Output
+
+```
+Snapshot exported to state.json (127 entries)
+```
+
+With `--include-memory`:
+
+```
+Snapshot exported to state.json (127 entries)
+Included linear memory dump: 65536 bytes (base64)
+```
+
+### Snapshot format
+
+The exported JSON file contains:
+
+```json
+{
+  "ledger_entries": {
+    "<key1>": "<xdr-value1>",
+    "<key2>": "<xdr-value2>",
+    ...
+  },
+  "linear_memory": "<base64-encoded-memory>"
+}
+```
+
+- **ledger_entries**: Map of ledger keys to XDR-encoded values
+- **linear_memory**: Base64-encoded WASM memory dump (if `--include-memory`)
+
+## decode-memory
+
+Decode and display a hexdump of the linear memory from a snapshot file.
+
+### Flags
+
+<ParamField path="--snapshot" type="string" required>
+  Snapshot file that contains linear memory
+</ParamField>
+
+<ParamField path="--offset" type="int" default="0">
+  Start offset in bytes
+  
+  Must be >= 0 and within memory bounds.
+</ParamField>
+
+<ParamField path="--length" type="int" default="256">
+  Number of bytes to print
+  
+  Must be > 0.
+</ParamField>
+
+### Examples
+
+<CodeGroup>
+```bash Decode first 256 bytes
+erst export decode-memory --snapshot state.json
+```
+
+```bash Decode specific range
+erst export decode-memory --snapshot state.json --offset 1024 --length 512
+```
+
+```bash Decode from address
+erst export decode-memory --snapshot state.json --offset 0x8000 --length 128
+```
+</CodeGroup>
+
+### Output format
+
+Displays a hexdump with ASCII representation:
+
+```
+Linear memory segment [0:256] (256 bytes)
+0x00000000  00 00 00 00 01 00 00 00  48 65 6c 6c 6f 00 00 00  |........Hello...|
+0x00000010  00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00  |................|
+0x00000020  57 6f 72 6c 64 00 00 00  00 00 00 00 03 00 00 00  |World...........|
+0x00000030  00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00  |................|
+...
+```
+
+Format:
+- **Address**: Hexadecimal offset
+- **Hex bytes**: Up to 16 bytes per line
+- **ASCII**: Printable characters (`.` for non-printable)
+
+## Use cases
+
+### Create test fixtures
+
+Export ledger state for unit tests:
+
+```bash
+# Debug a transaction
+erst debug abc123...def
+
+# Export state
+erst export --snapshot fixtures/test_state.json
+
+# Use in tests
+const state = require('./fixtures/test_state.json');
+```
+
+### Offline debugging
+
+Export data for analysis without network:
+
+```bash
+# Online: export session data
+erst debug abc123...def --network mainnet
+erst export --snapshot mainnet_state.json --include-memory
+
+# Offline: analyze locally
+erst export decode-memory --snapshot mainnet_state.json
+```
+
+### Share debugging context
+
+Share exact ledger state with team:
+
+```bash
+# Export state
+erst debug abc123...def
+erst export --snapshot bug_reproduction.json
+
+# Team member loads it
+erst debug --snapshot bug_reproduction.json
+```
+
+### Memory forensics
+
+Analyze WASM memory for debugging:
+
+```bash
+# Export with memory
+erst debug abc123...def
+erst export --snapshot crash.json --include-memory
+
+# Examine stack region
+erst export decode-memory --snapshot crash.json --offset 65536 --length 1024
+
+# Check heap
+erst export decode-memory --snapshot crash.json --offset 1048576 --length 4096
+```
+
+### Compare states
+
+Export before/after snapshots:
+
+```bash
+# Before
+erst debug tx_before --snapshot before.json
+
+# After
+erst debug tx_after --snapshot after.json
+
+# Diff the snapshots
+diff <(jq -S . before.json) <(jq -S . after.json)
+```
+
+## Snapshot files
+
+### Size
+
+Snapshot file sizes vary based on:
+
+- **Ledger entries**: Typically 10-500 KB
+- **Linear memory**: Adds 64 KB - 4 MB (if included)
+
+### Compression
+
+For large snapshots, consider compression:
+
+```bash
+# Export
+erst export --snapshot state.json --include-memory
+
+# Compress
+gzip state.json
+
+# Later: decompress and use
+gunzip state.json.gz
+erst export decode-memory --snapshot state.json
+```
+
+### Portability
+
+Snapshots are portable across:
+
+- Different machines
+- Different OS platforms
+- Different Erst versions (same schema)
+
+<Note>
+Snapshots use XDR encoding for ledger entries, making them network-agnostic and version-stable.
+</Note>
+
+## Error handling
+
+### No active session
+
+```
+Error: no active session. Run 'erst debug <tx-hash>' first
+```
+
+**Solution**: Debug a transaction first:
+```bash
+erst debug abc123...def
+erst export --snapshot state.json
+```
+
+### No memory dump available
+
+```
+Warning: Simulator response does not include a linear memory dump.
+Snapshot exported to state.json (127 entries)
+```
+
+**Cause**: Simulator wasn't configured to capture memory.
+
+**Solution**: This is expected - memory dumps are optional. The snapshot still contains all ledger state.
+
+### Invalid offset
+
+```
+Error: offset 100000 out of bounds for memory size 65536
+```
+
+**Solution**: Use a valid offset:
+```bash
+# Check memory size first
+erst export decode-memory --snapshot state.json --offset 0 --length 16
+```
+
+## Related commands
+
+- [debug](/commands/debug) - Create sessions for export
+- [session](/commands/session) - Manage saved sessions
+- [trace](/commands/trace) - Analyze execution traces

@@ -1,0 +1,405 @@
+---
+title: Interactive trace viewer
+description: Explore transaction execution traces with a powerful terminal-based UI
+---
+
+The interactive trace viewer provides a rich terminal UI for exploring Stellar smart contract execution traces. Navigate through complex call trees, search for specific events, and inspect contract state with keyboard shortcuts and visual highlighting.
+
+## Launching the viewer
+
+Start the interactive trace viewer with the `-i` flag:
+
+```bash
+erst debug <transaction-hash> --interactive
+# or short form
+erst debug <transaction-hash> -i
+```
+
+The viewer launches with:
+- Transaction summary (hash, total steps)
+- Automatic trap detection
+- Full keyboard navigation
+- Real-time terminal resizing
+
+### Example session
+
+```
+🔍 ERST Interactive Trace Viewer
+════════════════════════════════════════════════════════════════════
+Transaction: abc123def456789
+Total Steps: 248
+
+⚠️  Memory Trap Detected!
+Type: i32.load out of bounds
+Location: token.rs:45
+  Use 't' or 'trap' command to see local variables
+```
+
+## Navigation commands
+
+### Stepping through execution
+
+<CodeGroup>
+```bash Forward
+n, next, forward
+```
+
+```bash Backward  
+p, prev, back, backward
+```
+
+```bash Jump
+j, jump <step_number>
+```
+</CodeGroup>
+
+The viewer respects both event filters and the stdlib toggle, skipping filtered-out steps automatically.
+
+<Info>
+When navigating, the viewer automatically skips Rust `core::*` traces if the stdlib filter is enabled.
+</Info>
+
+## Filtering and search
+
+### Event type filtering
+
+Cycle through event types with the `f` command:
+
+```bash
+f, filter
+```
+
+Filter options cycle through:
+1. All steps (no filter)
+2. Traps only
+3. Contract calls only
+4. Host functions only  
+5. Authorization events only
+
+```
+Filter: contract_call (42 matching steps)
+```
+
+### Standard library filtering
+
+Toggle visibility of Rust core library traces:
+
+```bash
+S  # Case-sensitive: capital S
+```
+
+This hides noisy `core::*` function calls, letting you focus on your contract logic:
+
+```
+👁️  Rust core::* traces are now hidden
+```
+
+### Search functionality
+
+The search engine uses fuzzy matching to find events:
+
+<Steps>
+  <Step title="Start search">
+    Press `/` to enter search mode
+  </Step>
+  
+  <Step title="Enter query">
+    Type your search term (contract ID, function name, error message)
+  </Step>
+  
+  <Step title="Navigate results">
+    - `n`: Jump to next match
+    - `N`: Jump to previous match
+    - `ESC`: Clear search
+  </Step>
+</Steps>
+
+Search fields:
+- Contract IDs
+- Function names
+- Error messages
+- Event data
+- Event types
+
+<Note>
+Search is case-insensitive by default and uses fuzzy matching, so "transf" will match "transfer".
+</Note>
+
+## State inspection
+
+### Current state display
+
+View the current execution state:
+
+```bash
+s, show, state
+```
+
+Shows:
+- Step number and timestamp
+- Operation type
+- Contract ID and function
+- Arguments and return values
+- WASM instructions
+- Error messages
+- Source file locations
+- GitHub links (when available)
+- Memory and host state summaries
+
+### State reconstruction
+
+Reconstruct the full state at any step:
+
+<CodeGroup>
+```bash Current step
+r, reconstruct
+```
+
+```bash Specific step
+r, reconstruct <step_number>
+```
+</CodeGroup>
+
+Reconstruction includes:
+- Complete host state
+- Memory contents
+- Storage entries
+- All contract data at that point
+
+```
+🔧 Reconstructed State at Step 125
+════════════════════════════════════════════════════════════════════
+Step: 125
+Time: 15:04:05.342
+Operation: InvokeHostFunction
+
+Host State:
+  balance: i128(1000000)
+  admin: Address(...)
+  initialized: Bool(true)
+
+Memory:
+  0x1000: [42, 0, 0, 0, ...]
+  0x2000: [255, 255, 255, 255, ...]
+```
+
+## Trap inspection
+
+When a memory trap is detected, view detailed information:
+
+```bash
+t, trap
+```
+
+Trap details include:
+- Trap type (out of bounds, division by zero, etc.)
+- Exact instruction that failed
+- Source file and line number
+- Local variable values (with debug symbols)
+- Stack trace
+
+```
+❌ Memory Trap Detected
+
+Type: i32.load offset=8 out of bounds
+Step: 145/248
+
+Source Location:
+  File: src/token.rs
+  Line: 45
+  Column: 12
+
+Local Variables:
+  amount: i128(1000000)
+  recipient: Address("GC...")
+  balance_ptr: 0x10008  ← Out of bounds!
+
+Stack Trace:
+  token::transfer() at token.rs:45
+  token::transfer_from() at token.rs:89
+```
+
+<Warning>
+Local variable inspection requires contracts to be compiled with debug symbols. See [Source mapping](/features/source-mapping) for details.
+</Warning>
+
+## List and navigation
+
+### List steps
+
+Show steps around the current position:
+
+```bash
+l, list [count]
+```
+
+Default count is 10:
+
+```
+📋 Steps 120-130
+Filter: trap
+════════════════════════════════════════════════════════════════════
+     120: InvokeHostFunction (transfer)
+     121: HostFunction (require_auth)
+  ▶  125: ContractCall (check_balance) [trap]
+     126: HostFunction (get_contract_data)
+     127: ContractCall (update_state)
+```
+
+### Navigation info
+
+View detailed navigation state:
+
+```bash
+i, info
+```
+
+Shows:
+- Total steps and current position
+- Active filters and matching counts
+- Navigation capabilities (can step back/forward)
+- Snapshot count
+- Trap detection status
+
+## Split-pane view
+
+View trace and source code side by side:
+
+```bash
+sp, split
+```
+
+The split pane displays:
+- Left: Current trace node with full details
+- Right: Source code context (if available)
+
+```
+┌─────────────────────────┬─────────────────────────┐
+│ Step: 125               │ token.rs                │
+│ Function: transfer      │ 43: fn transfer(        │
+│ Contract: CDLZFC...     │ 44:   amount: i128,     │
+│                         │ 45:   recipient: Addr   │ ← Error here
+│ Error: Out of bounds    │ 46: ) -> Result<()> {   │
+│                         │ 47:   check_balance();  │
+└─────────────────────────┴─────────────────────────┘
+```
+
+<Note>
+The split-pane view requires source mapping information. Compile your contracts with `--features debug` to enable this.
+</Note>
+
+## Yanking (copying) raw XDR
+
+Copy raw XDR values to the clipboard:
+
+<CodeGroup>
+```bash Arguments
+y, yank a [index]
+# Example: yank a 0
+```
+
+```bash Return value
+y, yank r
+```
+</CodeGroup>
+
+Useful for:
+- Inspecting exact XDR encoding
+- Debugging type conversions
+- External XDR analysis tools
+
+```
+✨ Copied raw XDR to clipboard
+```
+
+## Keyboard shortcuts reference
+
+View all shortcuts in the viewer:
+
+```bash
+?, h, help
+```
+
+### Complete shortcut list
+
+| Key | Action |
+|-----|--------|
+| `n`, `next`, `forward` | Step forward |
+| `p`, `prev`, `back` | Step backward |
+| `j <step>`, `jump <step>` | Jump to specific step |
+| `s`, `show`, `state` | Show current state |
+| `S` | Toggle stdlib filter |
+| `f`, `filter` | Cycle event type filter |
+| `/` | Start search |
+| `n` (in search) | Next match |
+| `N` (in search) | Previous match |
+| `ESC` | Clear search |
+| `r`, `reconstruct` | Reconstruct state |
+| `t`, `trap` | Show trap info |
+| `l <count>`, `list <count>` | List steps |
+| `i`, `info` | Show navigation info |
+| `sp`, `split` | Split-pane view |
+| `e`, `expand` | Expand current node |
+| `c`, `collapse` | Collapse current node |
+| `E` | Toggle expand/collapse all |
+| `y <a/r>`, `yank <a/r>` | Copy raw XDR |
+| `?`, `h`, `help` | Show help |
+| `q`, `quit`, `exit` | Exit viewer |
+
+## Advanced features
+
+### Cross-contract call tracking
+
+The viewer automatically highlights contract boundaries:
+
+```
+     45: ContractCall (transfer)
+     ┌─ Contract boundary: CDLZFC... → CA3D5K...
+     46: ContractCall (mint)
+     47: HostFunction (require_auth)
+```
+
+### Terminal resizing
+
+The viewer automatically reflows content when you resize your terminal:
+- Long contract IDs wrap intelligently
+- XDR strings adapt to available width
+- Tree structure maintains alignment
+
+### Match counter
+
+When searching, see your position in results:
+
+```
+Match 3 of 12
+```
+
+## Tips and best practices
+
+<Steps>
+  <Step title="Start with filters">
+    Use event type filters to focus on relevant steps. Most debugging starts with trap or error events.
+  </Step>
+  
+  <Step title="Hide stdlib noise">
+    Press `S` to hide Rust core library traces and focus on your contract logic.
+  </Step>
+  
+  <Step title="Search strategically">
+    Search for contract IDs, function names, or error keywords to quickly locate issues.
+  </Step>
+  
+  <Step title="Reconstruct state">
+    Use state reconstruction to see complete memory and storage at failure points.
+  </Step>
+  
+  <Step title="Use split-pane for debugging">
+    When you find an error, use split-pane view to see the exact source code that failed.
+  </Step>
+</Steps>
+
+## Next steps
+
+- Learn about [Source mapping](/features/source-mapping) to see Rust code in traces
+- Use [Performance profiling](/features/performance-profiling) to identify slow operations
+- Set up [Offline analysis](/features/offline-analysis) to save and replay traces

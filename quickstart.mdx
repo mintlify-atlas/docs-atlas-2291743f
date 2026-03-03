@@ -1,80 +1,355 @@
 ---
-title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+title: Quick start
+description: Debug your first Stellar transaction with Erst in minutes
 ---
 
-## Get started in three steps
+This guide will walk you through debugging your first failed Soroban transaction using Erst.
 
-Get your documentation site running locally and make your first customization.
+## Prerequisites
 
-### Step 1: Set up your local environment
+Before you begin, make sure you have:
 
-<AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
-    
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
-  </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
-    
-    <Tip>Your preview updates automatically as you edit files.</Tip>
-  </Accordion>
-</AccordionGroup>
+- [Erst installed](/installation) and available in your PATH
+- A transaction hash from a failed Soroban transaction
+- Access to a Stellar RPC endpoint (default: public testnet)
 
-### Step 2: Deploy your changes
+<Note>
+If you don't have a failed transaction handy, you can use one from testnet for this tutorial.
+</Note>
 
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
-    
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
+## Basic debugging workflow
 
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
+<Steps>
+  <Step title="Debug a transaction">
+    The simplest way to debug a transaction is to provide its hash:
 
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
+    ```bash
+    erst debug <transaction-hash>
+    ```
 
-### Step 3: Go live
+    For example, on testnet:
 
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
+    ```bash
+    erst debug abc123...def --network testnet
+    ```
+
+    This command will:
+    - Fetch the transaction envelope from the Stellar network
+    - Retrieve the ledger state at the time of execution
+    - Simulate the transaction locally
+    - Display detailed error traces and diagnostic events
+
+    <Info>
+    The `--network` flag defaults to `testnet`. Use `--network mainnet` for mainnet transactions.
+    </Info>
+  </Step>
+
+  <Step title="Explore with interactive mode">
+    For complex transactions, use the interactive trace viewer:
+
+    ```bash
+    erst debug <transaction-hash> --interactive
+    ```
+
+    Or use the shorthand:
+
+    ```bash
+    erst debug <transaction-hash> -i
+    ```
+
+    The interactive mode provides:
+    - **Search functionality** - Press `/` to search through traces
+    - **Tree navigation** - Expand/collapse nodes with arrow keys
+    - **Syntax highlighting** - Color-coded contract IDs, functions, and errors
+    - **Fast navigation** - Jump between search matches with `n`/`N`
+    - **Help overlay** - Press `?` or `h` for keyboard shortcuts
+  </Step>
+
+  <Step title="Analyze the results">
+    Erst displays:
+    - Transaction execution trace
+    - Contract invocation hierarchy
+    - Error messages with context
+    - Resource consumption metrics
+    - Diagnostic events from the VM
+
+    Look for:
+    - Red-highlighted errors in the trace
+    - Contract IDs where failures occurred
+    - Function names in the call stack
+    - Error codes and messages
+  </Step>
+</Steps>
+
+## Common debugging scenarios
+
+<Tabs>
+  <Tab title="Network transactions">
+    Debug a transaction from testnet or mainnet:
+
+    <CodeGroup>
+    ```bash Testnet
+    erst debug abc123...def --network testnet
+    ```
+
+    ```bash Mainnet
+    erst debug abc123...def --network mainnet
+    ```
+
+    ```bash Custom RPC
+    erst debug abc123...def --rpc https://custom-rpc.example.com
+    ```
+    </CodeGroup>
+
+    The transaction data is automatically cached for offline analysis.
+  </Tab>
+
+  <Tab title="Offline analysis">
+    Debug a transaction from a saved XDR envelope (no RPC needed):
+
+    ```bash
+    erst debug < tx.xdr
+    ```
+
+    Or specify the file directly:
+
+    ```bash
+    erst debug --offline tx.xdr
+    ```
+
+    This is useful for:
+    - Debugging without network access
+    - Analyzing transactions shared by team members
+    - Testing against specific ledger states
+  </Tab>
+
+  <Tab title="Local WASM testing">
+    Test a contract WASM file locally without deploying:
+
+    ```bash
+    erst debug --wasm ./contract.wasm
+    ```
+
+    This enables:
+    - Rapid development iteration
+    - Pre-deployment validation
+    - Contract behavior testing
+  </Tab>
+</Tabs>
+
+## Performance profiling
+
+Generate interactive flamegraphs to visualize where your contract spends time and memory:
+
+```bash
+erst debug --profile <transaction-hash>
+```
+
+This creates an interactive HTML file (`<tx-hash>.flamegraph.html`) with:
+- Hover tooltips showing function details
+- Click-to-zoom for focusing on specific call stacks
+- Search/highlight to find frames by name
+- Dark mode support
+
+<Tabs>
+  <Tab title="HTML format">
+    ```bash
+    erst debug --profile --profile-format html <transaction-hash>
+    ```
+
+    Generates an interactive HTML flamegraph you can open in any browser.
+  </Tab>
+
+  <Tab title="SVG format">
+    ```bash
+    erst debug --profile --profile-format svg <transaction-hash>
+    ```
+
+    Generates a raw SVG with dark mode support for embedding in documentation.
+  </Tab>
+</Tabs>
+
+## Managing sessions
+
+Save debugging sessions to resume work later or share with your team:
+
+<Steps>
+  <Step title="Debug and save">
+    First, debug a transaction:
+
+    ```bash
+    erst debug abc123...def --network testnet
+    ```
+  </Step>
+
+  <Step title="Save the session">
+    After debugging, save the session:
+
+    ```bash
+    erst session save
+    ```
+
+    Or with a custom ID:
+
+    ```bash
+    erst session save --id my-debug-session
+    ```
+  </Step>
+
+  <Step title="List sessions">
+    View all saved sessions:
+
+    ```bash
+    erst session list
+    ```
+
+    This displays session IDs, transaction hashes, timestamps, and status.
+  </Step>
+
+  <Step title="Resume a session">
+    Resume debugging from where you left off:
+
+    ```bash
+    erst session resume <session-id>
+    ```
+  </Step>
+</Steps>
+
+## Cache management
+
+Erst caches transaction data to improve performance and enable offline analysis.
+
+<CodeGroup>
+```bash Check cache status
+erst cache status
+```
+
+```bash Clean old entries
+erst cache clean
+```
+
+```bash Clear all cache
+erst cache clear --force
+```
+</CodeGroup>
+
+Cache location: `~/.erst/cache`
+
+<Info>
+The cache uses an LRU (Least Recently Used) strategy to manage disk space automatically.
+</Info>
+
+## Advanced options
+
+### Override ledger timestamp
+
+Test how your contract behaves at different points in time:
+
+```bash
+erst debug <tx-hash> --timestamp 1672531200
+```
+
+The timestamp is in Unix epoch format.
+
+### Time window simulation
+
+Run simulations across a time range:
+
+```bash
+erst debug <tx-hash> --window 3600
+```
+
+This simulates the transaction across a 3600-second (1 hour) window.
+
+## Getting help
+
+<CodeGroup>
+```bash General help
+erst --help
+```
+
+```bash Command-specific help
+erst debug --help
+```
+
+```bash Check environment
+erst doctor
+```
+</CodeGroup>
+
+The `erst doctor` command diagnoses common configuration issues and provides recommendations.
+
+## Example workflow
+
+Here's a complete workflow for debugging a failed transaction:
+
+```bash
+# 1. Debug the transaction interactively
+erst debug abc123...def --network testnet --interactive
+
+# 2. Generate a performance profile
+erst debug abc123...def --profile
+
+# 3. Save the session for later
+erst session save --id failed-token-transfer
+
+# 4. Check cache status
+erst cache status
+
+# 5. Resume the session later
+erst session resume failed-token-transfer
+```
+
+## Troubleshooting
+
+### Transaction not found
+
+If Erst can't find your transaction:
+
+1. Verify the transaction hash is correct
+2. Check you're using the right network (`--network testnet` or `--network mainnet`)
+3. Ensure the RPC endpoint is accessible
+4. Try a custom RPC with `--rpc <url>`
+
+### Simulation errors
+
+If simulation fails:
+
+1. Run diagnostics: `erst doctor`
+2. Check Rust simulator is built: `cd simulator && cargo build --release`
+3. Clear cache and retry: `erst cache clear --force`
+4. Enable verbose output: `erst debug <tx-hash> --verbose`
+
+### Network timeouts
+
+If you experience network timeouts:
+
+1. Use a faster RPC endpoint with `--rpc`
+2. Check your internet connection
+3. Try again later (RPC may be temporarily unavailable)
+
+<Warning>
+If you're debugging mainnet transactions with sensitive data, be aware that Erst caches transaction data locally.
+</Warning>
 
 ## Next steps
 
-Now that you have your docs running, explore these key features:
+Now that you've debugged your first transaction, explore:
 
 <CardGroup cols={2}>
+  <Card title="Interactive trace viewer" icon="magnifying-glass">
+    Learn advanced trace navigation techniques
+  </Card>
 
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
+  <Card title="Performance profiling" icon="chart-line">
+    Optimize contract performance with flamegraphs
+  </Card>
 
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
+  <Card title="Session management" icon="floppy-disk">
+    Advanced session workflows and team collaboration
+  </Card>
 
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
-
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
-
+  <Card title="Contributing" icon="code">
+    Help improve Erst on GitHub
+  </Card>
 </CardGroup>
-
-<Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
-</Note>

@@ -1,0 +1,298 @@
+---
+title: Audit logging
+description: Generate cryptographically signed audit logs for transaction simulations
+---
+
+<Info>
+The audit functionality is available as a library API, not a CLI command. This page documents the audit log format and programmatic usage.
+</Info>
+
+## Overview
+
+Erst includes utilities to generate deterministic, cryptographically signed audit logs from simulation results. Audit logs provide:
+
+- **Tamper-proof records**: Ed25519 signatures ensure integrity
+- **Hardware attestation**: Optional HSM/hardware token integration
+- **Reproducible verification**: Anyone can verify the signature
+- **Compliance support**: Meet regulatory requirements for transaction analysis
+
+## Audit log format
+
+Audit logs are JSON documents with this structure:
+
+```json
+{
+  "version": "1.1.0",
+  "timestamp": "2026-03-03T12:00:00Z",
+  "transaction_hash": "abc123...",
+  "trace_hash": "def456...",
+  "signature": "789abc...",
+  "public_key": "012def...",
+  "payload": {
+    "envelope_xdr": "...",
+    "result_meta_xdr": "...",
+    "events": [...],
+    "logs": [...]
+  },
+  "hardware_attestation": {
+    "certificates": [...],
+    "token_info": "...",
+    "key_non_exportable": true,
+    "retrieved_at": "2026-03-03T12:00:00Z"
+  }
+}
+```
+
+### Fields
+
+<ParamField path="version" type="string" required>
+  Audit log schema version (currently `1.1.0`)
+</ParamField>
+
+<ParamField path="timestamp" type="string" required>
+  ISO 8601 timestamp when the audit log was generated
+</ParamField>
+
+<ParamField path="transaction_hash" type="string" required>
+  Stellar transaction hash being audited
+</ParamField>
+
+<ParamField path="trace_hash" type="string" required>
+  SHA-256 hash of the payload (hex-encoded)
+</ParamField>
+
+<ParamField path="signature" type="string" required>
+  Ed25519 signature of the trace hash (hex-encoded)
+</ParamField>
+
+<ParamField path="public_key" type="string" required>
+  Ed25519 public key for signature verification (hex-encoded)
+</ParamField>
+
+<ParamField path="payload" type="object" required>
+  The actual trace data being signed
+  
+  Contains:
+  - `envelope_xdr` - Transaction envelope
+  - `result_meta_xdr` - Transaction result metadata
+  - `events` - Contract events
+  - `logs` - Diagnostic logs
+</ParamField>
+
+<ParamField path="hardware_attestation" type="object">
+  Optional hardware attestation data from HSM/hardware token
+  
+  When present, provides cryptographic proof that the signing key:
+  - Resides on a hardware device
+  - Is non-exportable
+  - Meets specific security standards
+</ParamField>
+
+## Generating audit logs
+
+### Software signing (Ed25519 private key)
+
+Use an in-memory private key for signing:
+
+```go
+import "github.com/dotandev/hintents/internal/cmd"
+
+// Create signer from private key hex
+signer, err := signer.NewInMemorySigner(privateKeyHex)
+if err != nil {
+    return err
+}
+
+// Generate audit log
+auditLog, err := cmd.GenerateWithSigner(
+    txHash,
+    envelopeXdr,
+    resultMetaXdr,
+    events,
+    logs,
+    signer,
+    nil, // no hardware attestation
+)
+```
+
+### Hardware signing (PKCS#11 HSM)
+
+Use a hardware security module for signing:
+
+```go
+import (
+    "github.com/dotandev/hintents/internal/cmd"
+    "github.com/dotandev/hintents/internal/signer"
+)
+
+// Create PKCS#11 signer
+pkcs11Signer, err := signer.NewPkcs11Signer(
+    modulePath,
+    pin,
+    keyLabel,
+    publicKeyPEM,
+)
+if err != nil {
+    return err
+}
+defer pkcs11Signer.Close()
+
+// Retrieve hardware attestation
+attestation, err := pkcs11Signer.GetAttestation()
+if err != nil {
+    return err
+}
+
+// Generate audit log with attestation
+auditLog, err := cmd.GenerateWithSigner(
+    txHash,
+    envelopeXdr,
+    resultMetaXdr,
+    events,
+    logs,
+    pkcs11Signer,
+    &cmd.GenerateOptions{
+        HardwareAttestation: attestation,
+    },
+)
+```
+
+## Verifying audit logs
+
+Verify the integrity and signature of an audit log:
+
+```go
+import "github.com/dotandev/hintents/internal/cmd"
+
+// Parse audit log from JSON
+var auditLog cmd.AuditLog
+err := json.Unmarshal(data, &auditLog)
+if err != nil {
+    return err
+}
+
+// Verify signature
+valid, err := cmd.VerifyAuditLog(&auditLog)
+if err != nil {
+    return fmt.Errorf("verification failed: %w", err)
+}
+
+if !valid {
+    return fmt.Errorf("invalid signature")
+}
+
+fmt.Println("Audit log signature verified successfully")
+```
+
+## Hardware attestation
+
+Hardware attestation provides cryptographic proof that:
+
+1. The signing key is stored on a hardware device
+2. The key is non-exportable
+3. The device meets specific security standards
+
+The attestation includes:
+
+- **Certificate chain**: X.509 certificates from device to root CA
+- **Token info**: Hardware device model and serial number
+- **Key properties**: Whether key is non-exportable
+- **Retrieval timestamp**: When attestation was captured
+
+### Supported hardware
+
+- YubiKey 5 Series (PIV)
+- SoftHSM 2.x (testing)
+- Any PKCS#11-compliant HSM
+
+## Use cases
+
+### Compliance and auditing
+
+Generate verifiable records of transaction analysis:
+
+```go
+// Generate audit log for compliance
+auditLog, err := cmd.GenerateWithSigner(
+    txHash,
+    envelopeXdr,
+    resultMetaXdr,
+    events,
+    logs,
+    hsmSigner,
+    &cmd.GenerateOptions{
+        HardwareAttestation: attestation,
+    },
+)
+
+// Store in compliance database
+jsonData, _ := json.Marshal(auditLog)
+db.StoreAuditLog(txHash, jsonData)
+```
+
+### Forensic analysis
+
+Create tamper-proof records of security incidents:
+
+```go
+// Analyze suspicious transaction
+simResults := simulator.Run(txEnvelope)
+
+// Create audit trail
+auditLog, _ := cmd.GenerateWithSigner(
+    txHash,
+    envelopeXdr,
+    resultMetaXdr,
+    simResults.Events,
+    simResults.Logs,
+    signer,
+    nil,
+)
+
+// Archive for investigation
+archive.Store(auditLog)
+```
+
+### Reproducible debugging
+
+Share signed simulation results with team:
+
+```go
+// Debug transaction
+simResults := erst.Debug(txHash)
+
+// Create signed audit log
+auditLog, _ := cmd.GenerateWithSigner(
+    txHash,
+    envelopeXdr,
+    resultMetaXdr,
+    simResults.Events,
+    simResults.Logs,
+    signer,
+    nil,
+)
+
+// Share with team
+team.SendAuditLog(auditLog)
+
+// Others can verify authenticity
+valid, _ := cmd.VerifyAuditLog(auditLog)
+```
+
+## Security considerations
+
+<Warning>
+**Private key security**: Never commit private keys to version control or expose them in logs.
+</Warning>
+
+- Use environment variables for private keys
+- Prefer hardware signing for production use
+- Rotate keys periodically
+- Store audit logs in secure, append-only storage
+- Verify signatures before trusting audit data
+
+## Related commands
+
+- [debug](/commands/debug) - Generate simulation data for auditing
+- [session](/commands/session) - Sessions can include audit logs
+- [export](/commands/export) - Export simulation results for signing

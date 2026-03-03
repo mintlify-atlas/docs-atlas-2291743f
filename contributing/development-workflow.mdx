@@ -1,0 +1,463 @@
+---
+title: Development workflow
+description: Step-by-step guide for contributing code to the Erst CLI project
+---
+
+Follow this workflow when contributing to Erst to ensure smooth collaboration and maintain code quality.
+
+## Branch naming
+
+Create descriptive branch names based on the type of work:
+
+- **Features**: `feat/my-feature-name`
+- **Bug fixes**: `fix/issue-description`
+- **Documentation**: `docs/update-description`
+- **Refactoring**: `refactor/component-name`
+- **Tests**: `test/test-description`
+
+```bash
+# Create a feature branch
+git checkout -b feat/add-source-mapping
+
+# Create a bugfix branch
+git checkout -b fix/handle-network-timeout
+```
+
+## Development steps
+
+<Steps>
+  <Step title="Sync with main branch">
+    Before starting work, ensure your local `main` branch is up to date:
+    
+    ```bash
+    git checkout main
+    git pull origin main
+    ```
+  </Step>
+
+  <Step title="Create a new branch">
+    Create a branch for your feature or bug fix:
+    
+    ```bash
+    git checkout -b feat/my-feature
+    ```
+  </Step>
+
+  <Step title="Make your changes">
+    Write your code following the [code standards](/contributing/code-standards).
+  </Step>
+
+  <Step title="Test locally">
+    Run all tests and linting before committing:
+    
+    <CodeGroup>
+      ```bash Run tests
+      go test ./...
+      cargo test --all
+      ```
+      
+      ```bash Format code
+      go fmt ./...
+      cd simulator && cargo fmt --all
+      ```
+      
+      ```bash Run linting
+      golangci-lint run ./...
+      cd simulator && cargo clippy --all-targets -- -D warnings
+      ```
+    </CodeGroup>
+    
+    Or use Make targets:
+    
+    ```bash
+    make test
+    make rust-test
+    make lint-all-strict
+    ```
+  </Step>
+
+  <Step title="Commit your changes">
+    Follow the [commit message convention](#commit-message-convention):
+    
+    ```bash
+    git add .
+    git commit -m "feat(sim): add transaction replay caching"
+    ```
+  </Step>
+
+  <Step title="Push and create a pull request">
+    Push your branch and create a PR on GitHub:
+    
+    ```bash
+    git push origin feat/my-feature
+    ```
+    
+    Then create a PR with a detailed description.
+  </Step>
+
+  <Step title="Address review feedback">
+    Make requested changes, commit, and push:
+    
+    ```bash
+    git add .
+    git commit -m "fix: address review comments"
+    git push origin feat/my-feature
+    ```
+  </Step>
+</Steps>
+
+## Commit message convention
+
+Erst follows the [Conventional Commits](https://www.conventionalcommits.org/) specification:
+
+```
+<type>(<scope>): <subject>
+
+<body>
+
+<footer>
+```
+
+### Types
+
+- `feat`: A new feature
+- `fix`: A bug fix
+- `test`: Adding or improving tests
+- `docs`: Documentation changes
+- `refactor`: Code refactoring without feature changes
+- `perf`: Performance improvements
+- `chore`: Build, CI, or dependency updates
+- `ci`: CI/CD configuration changes
+
+### Scopes
+
+Use specific areas of the codebase:
+
+- `sim`: Simulator (Rust)
+- `cli`: CLI interface (Go)
+- `updater`: Update mechanism
+- `trace`: Trace viewer
+- `analyzer`: Transaction analyzer
+- `rpc`: RPC client
+
+### Examples
+
+<CodeGroup>
+  ```txt Feature
+  feat(sim): add protocol version spoofing for harness
+  
+  Implements protocol version override to allow testing
+  transactions from different network versions locally.
+  
+  Closes #350
+  ```
+
+  ```txt Bug fix
+  fix(updater): handle network timeouts gracefully
+  
+  Previously, network timeouts would cause the updater to panic.
+  Now we retry with exponential backoff up to 3 times.
+  
+  Fixes #412
+  ```
+
+  ```txt Tests
+  test(sim): add 1000+ transaction regression suite
+  
+  Adds comprehensive regression tests using real mainnet
+  transactions to prevent future breakage.
+  ```
+
+  ```txt Documentation
+  docs: add comprehensive contribution guidelines
+  ```
+</CodeGroup>
+
+### Commit rules
+
+- **Keep subject under 50 characters**
+- **Use imperative mood**: "add" not "added" or "adds"
+- **No period** at the end of the subject
+- **Provide detailed explanation** in the body if the change is non-obvious
+- **Reference related issues**: `Closes #350`, `Refs #343`
+
+<Warning>
+  Never use emojis in commit messages or PR titles.
+</Warning>
+
+## Pull request structure
+
+Create clear, well-documented pull requests:
+
+### PR title
+
+Follow the same format as commit messages:
+
+```
+feat(sim): add transaction replay caching
+```
+
+### PR description template
+
+```markdown
+## Description
+Brief explanation of the changes and why they're needed.
+
+## Related issues
+Closes #350, relates to #343
+
+## Changes made
+- Added caching layer for transaction replay
+- Implemented LRU eviction policy
+- Added configuration options for cache size
+
+## Testing
+- Added unit tests for cache operations
+- Added integration tests for replay with cache
+- Tested with 1000+ transaction replays
+- Verified 3x performance improvement
+
+## Breaking changes
+None
+
+## Checklist
+- [x] Code follows style guidelines
+- [x] Tests added/updated
+- [x] Documentation updated
+- [x] No new warnings or errors
+- [x] All tests pass locally
+- [x] Strict linting passes
+```
+
+### PR checks
+
+Before submitting, ensure:
+
+- All CI checks pass
+- Code coverage doesn't decrease
+- All tests pass locally
+- Strict linting passes (`make lint-all-strict`)
+- Documentation is updated if needed
+
+<Info>
+  The CI pipeline will automatically run tests, linting, and coverage checks. PRs with failing checks will not be merged.
+</Info>
+
+## Formatting and linting
+
+Run formatting and linting before every commit:
+
+### Format code
+
+<CodeGroup>
+  ```bash Go formatting
+  make fmt-go
+  ```
+
+  ```bash Rust formatting
+  make fmt-rust
+  ```
+
+  ```bash All formatting
+  make fmt
+  ```
+</CodeGroup>
+
+### Run linting
+
+<CodeGroup>
+  ```bash Go linting
+  make lint-strict
+  ```
+
+  ```bash Rust linting
+  make rust-lint-strict
+  ```
+
+  ```bash All linting
+  make lint-all-strict
+  ```
+</CodeGroup>
+
+## Using pre-commit hooks
+
+Install pre-commit hooks to automatically check your code:
+
+<Steps>
+  <Step title="Install pre-commit">
+    ```bash
+    pip install pre-commit
+    ```
+  </Step>
+
+  <Step title="Install hooks">
+    ```bash
+    pre-commit install
+    ```
+    
+    Or use Make:
+    
+    ```bash
+    make pre-commit
+    ```
+  </Step>
+
+  <Step title="Run manually">
+    Test the hooks on all files:
+    
+    ```bash
+    pre-commit run --all-files
+    ```
+  </Step>
+</Steps>
+
+Pre-commit hooks will automatically:
+- Format Go code with `gofmt`
+- Format Rust code with `cargo fmt`
+- Run `golangci-lint`
+- Run `cargo clippy`
+- Check for merge conflicts
+- Validate YAML files
+
+## Code review checklist
+
+When reviewing PRs, ensure:
+
+- [ ] Code follows naming and style conventions
+- [ ] Error handling is appropriate
+- [ ] Tests are adequate and pass
+- [ ] Documentation is clear and complete
+- [ ] No unnecessary dependencies added
+- [ ] Performance implications considered
+- [ ] Security implications reviewed
+- [ ] Commit messages follow convention
+- [ ] No dead code or unused variables
+- [ ] Linting passes without suppressions (unless justified)
+
+## Common development tasks
+
+<Accordion title="Building the project">
+  ```bash
+  # Build Go CLI
+  go build -o erst cmd/erst/main.go
+  
+  # Or use Make
+  make build
+  
+  # Build for release (optimized)
+  make build-release
+  
+  # Build Rust simulator
+  cd simulator && cargo build --release
+  
+  # Or use Make
+  make rust-build
+  ```
+</Accordion>
+
+<Accordion title="Building for specific OS">
+  ```bash
+  # Linux AMD64
+  GOOS=linux GOARCH=amd64 go build -o erst-linux-amd64 ./cmd/erst
+  
+  # macOS ARM64
+  GOOS=darwin GOARCH=arm64 go build -o erst-darwin-arm64 ./cmd/erst
+  
+  # Windows AMD64
+  GOOS=windows GOARCH=amd64 go build -o erst-windows-amd64.exe ./cmd/erst
+  ```
+</Accordion>
+
+<Accordion title="Cleaning build artifacts">
+  ```bash
+  # Clean Go artifacts
+  go clean
+  go clean -cache
+  
+  # Clean Rust artifacts
+  cd simulator && cargo clean
+  
+  # Clean all (using Make)
+  make clean
+  ```
+</Accordion>
+
+<Accordion title="Installing dependencies">
+  ```bash
+  # Go dependencies
+  go mod tidy
+  go mod download
+  
+  # Or use Make
+  make deps
+  
+  # Rust dependencies
+  cd simulator && cargo fetch
+  ```
+</Accordion>
+
+<Accordion title="Updating dependencies">
+  ```bash
+  # Update Go dependencies
+  go get -u ./...
+  go mod tidy
+  
+  # Update Rust dependencies
+  cd simulator && cargo update
+  ```
+</Accordion>
+
+## Addressing review feedback
+
+When maintainers request changes:
+
+1. **Make the requested changes** in your local branch
+2. **Commit with a descriptive message**: `fix: address review comments on error handling`
+3. **Push to your branch**: `git push origin feat/my-feature`
+4. **Reply to comments** explaining your changes
+5. **Re-request review** when ready
+
+<Note>
+  Don't force-push unless you're rebasing or squashing commits. Regular pushes preserve the review history.
+</Note>
+
+## Rebasing and squashing
+
+Before merging, you may be asked to rebase or squash commits:
+
+```bash
+# Rebase onto latest main
+git checkout main
+git pull origin main
+git checkout feat/my-feature
+git rebase main
+
+# Squash last 3 commits
+git rebase -i HEAD~3
+
+# Force push after rebase (only if necessary)
+git push -f origin feat/my-feature
+```
+
+<Warning>
+  Only force-push to your feature branch, never to `main`. Be careful when force-pushing to branches others are working on.
+</Warning>
+
+## Getting unblocked
+
+If you're stuck:
+
+- **Review the documentation** in `docs/`
+- **Check existing issues** for similar problems
+- **Ask in GitHub Discussions** for general questions
+- **Create an issue** for specific bugs or feature questions
+- **Tag maintainers** in your PR if you need guidance
+
+## Important reminders
+
+- **No emojis** in commit messages or PR titles
+- **No vague messages** like "fixes stuff" or "updates things"
+- **Always run strict linting** before pushing
+- **All tests must pass** before requesting review
+- **Update documentation** when changing functionality
+- **Reference issues** in commit messages and PRs

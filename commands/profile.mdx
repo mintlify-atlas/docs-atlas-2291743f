@@ -1,0 +1,172 @@
+---
+title: erst profile
+description: Export trace as pprof profile for gas-to-function mapping
+---
+
+Synthesize trace events into a pprof-compliant profile that maps gas consumption to functions.
+
+## Usage
+
+```bash
+erst profile [trace-file] [flags]
+```
+
+## Description
+
+The `profile` command converts Erst execution traces into the pprof profile format, which can be analyzed using Go's profiling tools. This allows you to:
+
+- Map gas consumption to specific functions
+- Identify performance bottlenecks
+- Analyze call graphs and hotspots
+- Generate flamegraphs with standard tooling
+
+<Info>
+The output is compatible with `go tool pprof` and other pprof-compatible analyzers.
+</Info>
+
+## Examples
+
+<CodeGroup>
+```bash Basic usage
+erst profile execution.json -o gas.pb.gz
+```
+
+```bash Using file flag
+erst profile --file debug_trace.json -o gas.pb.gz
+```
+
+```bash Analyze with pprof
+erst profile execution.json -o gas.pb.gz
+go tool pprof gas.pb.gz
+```
+
+```bash Generate flamegraph
+erst profile execution.json -o gas.pb.gz
+go tool pprof -http=:8080 gas.pb.gz
+```
+</CodeGroup>
+
+## Arguments
+
+<ParamField path="trace-file" type="string">
+  Path to the trace file to convert (JSON format)
+  
+  Can be provided as positional argument or via `--file` flag.
+</ParamField>
+
+## Flags
+
+<ParamField path="--file" type="string">
+  Trace file to load (alternative to positional argument)
+  
+  Alias: `-f`
+</ParamField>
+
+<ParamField path="--output" type="string" default="profile.pb.gz">
+  Output pprof file path
+  
+  Alias: `-o`
+</ParamField>
+
+## Output format
+
+The generated profile file is a gzip-compressed protobuf that contains:
+
+- **Sample data**: Gas consumption per function call
+- **Call stacks**: Complete execution paths
+- **Location info**: Function names and contract addresses
+- **Metadata**: Transaction hash, network, and timestamps
+
+## Analyzing profiles
+
+Once you've generated a profile, use these commands to analyze it:
+
+### Interactive web UI
+
+```bash
+go tool pprof -http=:8080 gas.pb.gz
+```
+
+This launches a web interface with:
+- Interactive flamegraph
+- Call graph visualization
+- Source code view (if debug symbols available)
+- Top functions by gas consumption
+
+### Command-line analysis
+
+<Tabs>
+  <Tab title="Top functions">
+    ```bash
+    go tool pprof -top gas.pb.gz
+    ```
+    
+    Shows functions sorted by gas consumption.
+  </Tab>
+  
+  <Tab title="Call graph">
+    ```bash
+    go tool pprof -tree gas.pb.gz
+    ```
+    
+    Displays hierarchical call tree.
+  </Tab>
+  
+  <Tab title="Flamegraph">
+    ```bash
+    go tool pprof -raw gas.pb.gz | flamegraph.pl > flame.svg
+    ```
+    
+    Generates SVG flamegraph (requires flamegraph.pl).
+  </Tab>
+  
+  <Tab title="Focus on function">
+    ```bash
+    go tool pprof -focus=transfer gas.pb.gz
+    ```
+    
+    Filters to specific function and callers/callees.
+  </Tab>
+</Tabs>
+
+## Use cases
+
+### Optimize gas consumption
+
+Identify which functions consume the most gas:
+
+```bash
+erst profile execution.json -o gas.pb.gz
+go tool pprof -top10 gas.pb.gz
+```
+
+### Compare optimizations
+
+Generate profiles before and after optimization:
+
+```bash
+# Before
+erst profile before.json -o before.pb.gz
+
+# After
+erst profile after.json -o after.pb.gz
+
+# Compare
+go tool pprof -base=before.pb.gz after.pb.gz
+```
+
+### Debug performance issues
+
+Find unexpected bottlenecks:
+
+```bash
+erst profile execution.json -o gas.pb.gz
+go tool pprof -http=:8080 gas.pb.gz
+# Click "Flame Graph" in web UI
+```
+
+## Related commands
+
+- [trace](/commands/trace) - View traces interactively
+- [debug](/commands/debug) - Generate traces from transactions
+- [compare](/commands/compare) - Compare gas usage between versions

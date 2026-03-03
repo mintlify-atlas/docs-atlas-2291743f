@@ -1,0 +1,99 @@
+---
+title: Introduction to Erst
+description: A specialized developer tool for debugging Stellar smart contract transactions
+---
+
+Erst is a specialized developer tool for the Stellar network, designed to solve the "black box" debugging experience on Soroban. When a Soroban transaction fails on mainnet, developers typically receive only a generic XDR error code. Erst bridges the gap between opaque network errors and your source code.
+
+<Info>
+Erst is currently in active development (Pre-Alpha). The primary focus is Soroban error decoding and transaction replay.
+</Info>
+
+## What problems does Erst solve?
+
+When a Stellar smart contract transaction fails, you need to understand **why** it failed. Erst provides:
+
+- **Transaction replay** - Fetch failed transactions and re-execute them locally
+- **Local simulation** - Execute transactions in a controlled environment
+- **Trace decoding** - Map execution failures to readable instructions
+- **Source mapping** - Link WASM instruction failures to specific Rust source code lines
+- **Error suggestions** - Get heuristic-based fix suggestions for common errors
+- **GitHub source links** - Automatically generate clickable links to source locations
+
+## Key features
+
+<CardGroup cols={2}>
+  <Card title="Debug transactions" icon="bug" href="/quickstart">
+    Analyze failed transactions with detailed error traces and execution context
+  </Card>
+  
+  <Card title="Interactive trace viewer" icon="magnifying-glass">
+    Explore transaction execution traces with search, syntax highlighting, and tree navigation
+  </Card>
+  
+  <Card title="Performance profiling" icon="chart-line">
+    Generate interactive flamegraphs to visualize CPU and memory consumption
+  </Card>
+  
+  <Card title="Session management" icon="floppy-disk">
+    Save and resume debugging sessions to preserve state across CLI invocations
+  </Card>
+</CardGroup>
+
+## How it works
+
+Erst operates through a three-step process:
+
+<Steps>
+  <Step title="Fetch transaction data">
+    Uses Stellar RPC to retrieve the `TransactionEnvelope` and `LedgerFootprint` (read/write set) for the block where the transaction failed
+  </Step>
+  
+  <Step title="Simulate execution">
+    A Rust binary (`erst-sim`) integrates with `soroban-env-host` to replay transactions in a local environment
+  </Step>
+  
+  <Step title="Capture diagnostics">
+    Feeds inputs into the VM and captures `diagnostic_events`, mapping failures back to source code
+  </Step>
+</Steps>
+
+## The challenge
+
+Stellar's `soroban-env-host` executes WASM contracts. When a contract traps (crashes), the specific reason is often sanitized or lost in the XDR result to keep the ledger size small. This makes debugging production failures extremely difficult.
+
+Erst solves this by replaying transactions locally where full diagnostic information can be captured and analyzed.
+
+## Get started
+
+<CardGroup cols={2}>
+  <Card title="Installation" icon="download" href="/installation">
+    Install Erst using Go or build from source
+  </Card>
+  
+  <Card title="Quick start" icon="rocket" href="/quickstart">
+    Debug your first transaction in minutes
+  </Card>
+</CardGroup>
+
+## Command groups
+
+Erst organizes commands into logical groups:
+
+- **Core debugging** - `debug`, `trace`, `explain` commands for transaction analysis
+- **Testing & validation** - `verify`, `compare`, `fuzz` for contract testing
+- **Session & cache management** - `session`, `cache` for workflow optimization
+- **Development tools** - `init`, `doctor`, `sandbox` for local development
+- **Utility commands** - `version`, `upgrade`, `completion` for CLI management
+
+## Requirements
+
+To use Erst, you need:
+
+- Go 1.24.0 or higher
+- Rust 1.70 or higher (for building from source)
+- Access to a Stellar RPC endpoint (testnet or mainnet)
+
+## Community and support
+
+Erst is an open-source initiative. Contributions, pull requests, and issues are welcome on [GitHub](https://github.com/dotandev/hintents).

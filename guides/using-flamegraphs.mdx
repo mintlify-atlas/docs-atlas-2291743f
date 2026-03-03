@@ -1,0 +1,397 @@
+---
+title: Using flamegraphs
+description: Profile CPU and memory consumption during Soroban contract execution with interactive flamegraphs
+---
+
+Flamegraphs visualize where your smart contract spends time and memory during execution. Erst generates interactive flamegraphs that help you identify performance bottlenecks and optimize contract efficiency.
+
+## Quick start
+
+Generate an interactive flamegraph for any transaction:
+
+```bash
+erst debug --profile <transaction-hash>
+```
+
+This creates an interactive HTML file: `<tx-hash>.flamegraph.html`
+
+<Info>
+By default, flamegraphs are exported as interactive HTML. Open the file in any modern browser to explore.
+</Info>
+
+## Export formats
+
+Erst supports two flamegraph formats:
+
+<CodeGroup>
+
+```bash Interactive HTML (default)
+erst debug --profile --profile-format html <transaction-hash>
+```
+
+```bash Raw SVG
+erst debug --profile --profile-format svg <transaction-hash>
+```
+
+</CodeGroup>
+
+### Format comparison
+
+| Feature | HTML | SVG |
+|---------|------|-----|
+| Interactive | ✅ Yes | ❌ No |
+| Hover tooltips | ✅ Yes | ❌ No |
+| Click-to-zoom | ✅ Yes | ❌ No |
+| Search/highlight | ✅ Yes | ❌ No |
+| Dark mode | ✅ Auto | ✅ Manual |
+| File size | Larger | Smaller |
+| External dependencies | None | None |
+| Browser required | Yes | No |
+| Vector editors | ❌ No | ✅ Yes |
+
+## Interactive features
+
+### Hover tooltips
+
+Move your mouse over any frame to see detailed information:
+
+- Function name
+- File location
+- Duration (microseconds)
+- Percentage of total time
+- Call depth
+
+```text
+Example tooltip:
+Function: transfer
+File: token/src/lib.rs:42
+Duration: 1,234 μs (15.3%)
+```
+
+### Click-to-zoom
+
+Click any frame to zoom into that section of the flamegraph:
+
+<Steps>
+
+### Click a frame
+
+Click on any contract function or call in the flamegraph.
+
+### View focused subtree
+
+The view zooms to show only that function and its children, making deeply nested calls easier to analyze.
+
+### Reset view
+
+Click the "Reset Zoom" button at the top to return to the full flamegraph.
+
+</Steps>
+
+<Note>
+Zooming doesn't change the data - it just filters the view. All percentages remain relative to the total execution time.
+</Note>
+
+### Search and highlight
+
+Find specific functions quickly:
+
+<Steps>
+
+### Open search box
+
+Click the search input at the top of the flamegraph.
+
+### Enter function name
+
+Type the name of a function, contract, or any text to search:
+```
+transfer
+```
+
+### View highlighted matches
+
+All matching frames are highlighted in magenta. Search is case-insensitive.
+
+### Clear highlights
+
+Click "Clear" or empty the search box to remove highlighting.
+
+</Steps>
+
+### Responsive design
+
+The interactive flamegraph adapts to:
+- Different viewport sizes (desktop, tablet, mobile)
+- Light and dark color schemes (automatic detection)
+- High-DPI displays
+
+## Understanding flamegraphs
+
+### Reading the visualization
+
+Flamegraphs are read from bottom to top:
+
+```text
+┌─────────────────────────────────┐  ← Top: leaf functions (actual work)
+│     malloc  │  hash  │  verify  │
+├─────────────┴────────┴──────────┤
+│        contract_function_A       │
+├──────────────────────────────────┤
+│           invoke_host            │
+└──────────────────────────────────┘  ← Bottom: root (entry point)
+```
+
+**Key concepts:**
+
+- **Width**: Represents time or memory consumed (wider = more resources)
+- **Height**: Call stack depth (higher = more nested calls)
+- **Color**: Different colors distinguish different functions (no semantic meaning)
+- **Flat vs stacked**: Flat frames are time spent in that function directly; stacked frames include children
+
+### Performance analysis
+
+Use flamegraphs to identify:
+
+<Accordion title="Hot paths">
+Look for wide frames - these consume the most resources. If a frame spans most of the width, that function or its children are the bottleneck.
+
+**Action:** Focus optimization efforts on these wide functions.
+</Accordion>
+
+<Accordion title="Deep call stacks">
+Tall stacks indicate many nested function calls. Deep recursion or excessive abstraction layers can impact performance.
+
+**Action:** Consider flattening call hierarchies or using iterative approaches.
+</Accordion>
+
+<Accordion title="Repeated patterns">
+If you see the same function name repeated many times at the same level, that function is called multiple times in sequence.
+
+**Action:** Look for opportunities to batch operations or cache results.
+</Accordion>
+
+<Accordion title="Unexpected functions">
+Surprising functions appearing in hot paths may indicate:
+- Inefficient library usage
+- Unnecessary conversions or copies
+- Debug code left in release builds
+
+**Action:** Review why these functions are called and if they can be avoided.
+</Accordion>
+
+## Common workflows
+
+### Profile a specific transaction
+
+<Steps>
+
+### Run with profiling enabled
+
+```bash
+erst debug --profile abc123...def --network testnet
+```
+
+### Open the HTML file
+
+```bash
+open abc123...def.flamegraph.html
+# or on Linux:
+xdg-open abc123...def.flamegraph.html
+```
+
+### Analyze the visualization
+
+Look for wide frames and unexpected call patterns.
+
+</Steps>
+
+### Compare network behavior
+
+Profile the same transaction on different networks:
+
+```bash
+# Profile on testnet
+erst debug --profile abc123...def --network testnet
+mv abc123...def.flamegraph.html testnet-flamegraph.html
+
+# Profile on mainnet
+erst debug --profile abc123...def --network mainnet
+mv abc123...def.flamegraph.html mainnet-flamegraph.html
+```
+
+Open both files side-by-side to compare execution profiles.
+
+### Profile local WASM
+
+Test contract performance during development:
+
+```bash
+erst debug --wasm ./contract.wasm --profile
+```
+
+<Warning>
+Local WASM replay uses mock state, so performance characteristics may differ from on-chain execution.
+</Warning>
+
+### Export for sharing
+
+<CodeGroup>
+
+```bash Interactive (shareable)
+# Generate HTML file
+erst debug --profile --profile-format html abc123...def
+
+# Share the self-contained HTML file
+# (no external dependencies required)
+```
+
+```bash Static (documentation)
+# Generate SVG for embedding in docs
+erst debug --profile --profile-format svg abc123...def
+
+# Convert to PNG if needed
+convert abc123...def.flamegraph.svg flamegraph.png
+```
+
+</CodeGroup>
+
+## Dark mode support
+
+Both HTML and SVG formats automatically adapt to your system's color scheme:
+
+**Light mode:**
+- Light background (#ffffff)
+- Dark text (#000000)
+- Vibrant frame colors
+
+**Dark mode:**
+- Dark background (#1e1e2e)
+- Light text (#cdd6f4)
+- Adjusted frame colors for contrast
+
+No configuration needed - the flamegraph detects your system preference via CSS media queries.
+
+## Standalone files
+
+HTML flamegraphs are completely self-contained:
+
+- All CSS inlined in `<style>` block
+- All JavaScript inlined in `<script>` block
+- SVG embedded directly
+- No external dependencies
+- No network requests
+- Works offline
+
+You can:
+- Email the HTML file
+- Store it in version control
+- Host it on any web server
+- Open it directly from disk
+
+## Browser compatibility
+
+Interactive HTML flamegraphs work in:
+
+- Chrome/Edge 88+
+- Firefox 78+
+- Safari 14+
+- Opera 74+
+
+<Note>
+Older browsers may display the flamegraph but interactive features might not work.
+</Note>
+
+## Technical details
+
+### Implementation
+
+Flamegraph generation is located in `internal/visualizer/flamegraph.go`:
+
+- `GenerateInteractiveHTML()` - Wraps SVG in interactive HTML
+- `ExportFlamegraph()` - Main export function
+- `ExportFormat` - Enum for format selection
+- `GetFileExtension()` - Returns appropriate extension
+
+### File extensions
+
+- HTML format: `.flamegraph.html`
+- SVG format: `.flamegraph.svg`
+
+Both patterns are automatically added to `.gitignore` when running `erst init`.
+
+### Performance
+
+Flamegraph generation is fast:
+- Small transactions (< 100 frames): < 50ms
+- Medium transactions (100-1000 frames): < 200ms
+- Large transactions (> 1000 frames): < 1s
+
+## Optimization tips
+
+### Reduce flamegraph complexity
+
+If your flamegraph is too large to analyze:
+
+1. **Filter by time threshold**: Focus on frames taking > 1% of total time
+2. **Zoom into hot paths**: Use click-to-zoom to focus on expensive sections
+3. **Search for specific functions**: Use search to isolate particular concerns
+
+### Integrate with CI/CD
+
+Automate performance regression detection:
+
+```bash
+#!/bin/bash
+# Generate flamegraph for baseline transaction
+erst debug --profile $BASELINE_TX --network mainnet
+mv $BASELINE_TX.flamegraph.html baseline.html
+
+# Generate flamegraph for new code
+erst debug --profile $NEW_TX --network mainnet
+mv $NEW_TX.flamegraph.html current.html
+
+# Compare and fail if performance degrades significantly
+# (requires custom comparison tooling)
+```
+
+## Troubleshooting
+
+### Empty flamegraph
+
+```text
+Error: no profiling data captured
+```
+
+**Solutions:**
+- Ensure the transaction executed successfully
+- Check that your RPC supports diagnostic events
+- Try with `--verbose` to see what data is available
+
+### Flamegraph too small
+
+If text is unreadable:
+- Use browser zoom (Ctrl/Cmd + `+`)
+- Click frames to zoom into specific sections
+- Export as SVG and open in a vector graphics editor
+
+### JavaScript errors in browser
+
+Check browser console (F12) for errors:
+- Ensure you're using a supported browser version
+- Try opening in a different browser
+- Verify the HTML file wasn't corrupted during transfer
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Debugging failed transactions" icon="bug" href="/guides/debugging-failed-transactions">
+    Learn the fundamentals of transaction debugging
+  </Card>
+  <Card title="Working with sessions" icon="floppy-disk" href="/guides/working-with-sessions">
+    Save profiling data for later analysis
+  </Card>
+  <Card title="Local WASM replay" icon="microchip" href="/guides/local-wasm-replay">
+    Profile contracts during local development
+  </Card>
+</CardGroup>

@@ -1,0 +1,275 @@
+---
+title: Installation
+description: Install Erst CLI and get ready to debug Stellar smart contracts
+---
+
+There are multiple ways to install Erst depending on your environment and preferences.
+
+## Prerequisites
+
+Before installing Erst, ensure you have:
+
+- Go 1.24.0 or higher
+- Rust 1.70 or higher (for building from source)
+- Git (for cloning the repository)
+
+<Note>
+For Rust installation, visit [rustup.rs](https://rustup.rs). For Go, visit [go.dev/doc/install](https://go.dev/doc/install).
+</Note>
+
+## Installation methods
+
+<Tabs>
+  <Tab title="Go install">
+    The simplest way to install Erst if you have Go installed:
+
+    ```bash
+    go install github.com/dotandev/hintents/cmd/erst@latest
+    ```
+
+    This will install the `erst` binary to your `$GOPATH/bin` directory. Make sure this directory is in your `PATH`.
+
+    Verify the installation:
+
+    ```bash
+    erst version
+    ```
+  </Tab>
+
+  <Tab title="Build from source">
+    For the latest development version or to contribute to Erst:
+
+    <Steps>
+      <Step title="Clone the repository">
+        ```bash
+        git clone https://github.com/dotandev/hintents.git
+        cd hintents
+        ```
+      </Step>
+
+      <Step title="Install Go dependencies">
+        ```bash
+        go mod download
+        ```
+      </Step>
+
+      <Step title="Build the Rust simulator">
+        ```bash
+        cd simulator
+        cargo build --release
+        cd ..
+        ```
+
+        <Info>
+        The Rust simulator (`erst-sim`) is a critical component that integrates with `soroban-env-host` to replay transactions.
+        </Info>
+      </Step>
+
+      <Step title="Build the CLI">
+        ```bash
+        make build
+        ```
+
+        This creates the `erst` binary in the `bin/` directory.
+
+        For an optimized release build:
+
+        ```bash
+        make build-release
+        ```
+      </Step>
+
+      <Step title="Add to PATH (optional)">
+        ```bash
+        export PATH="$PATH:$(pwd)/bin"
+        ```
+
+        Add this line to your `~/.bashrc` or `~/.zshrc` to make it permanent.
+      </Step>
+    </Steps>
+  </Tab>
+
+  <Tab title="Development setup">
+    If you plan to contribute to Erst or need a full development environment:
+
+    <Steps>
+      <Step title="Clone and navigate">
+        ```bash
+        git clone https://github.com/dotandev/hintents.git
+        cd hintents
+        ```
+      </Step>
+
+      <Step title="Install dependencies">
+        ```bash
+        go mod download
+        cd simulator && cargo fetch && cd ..
+        ```
+      </Step>
+
+      <Step title="Build components">
+        ```bash
+        cd simulator
+        cargo build --release
+        cd ..
+        make build
+        ```
+      </Step>
+
+      <Step title="Run tests">
+        Verify your setup by running the test suites:
+
+        ```bash
+        # Go tests
+        go test ./...
+
+        # Rust tests
+        cargo test --release -p erst-sim
+        ```
+      </Step>
+
+      <Step title="Set up pre-commit hooks (optional)">
+        ```bash
+        pip install pre-commit
+        pre-commit install
+        ```
+
+        This ensures code quality checks run before each commit.
+      </Step>
+    </Steps>
+  </Tab>
+</Tabs>
+
+## Verify installation
+
+After installation, verify that Erst is working correctly:
+
+<CodeGroup>
+```bash Check version
+erst version
+```
+
+```bash Check help
+erst --help
+```
+
+```bash Run diagnostics
+erst doctor
+```
+</CodeGroup>
+
+The `erst doctor` command checks your environment and reports any configuration issues.
+
+## Configuration
+
+### Cache directory
+
+Erst caches transaction data and simulation results in `~/.erst/cache` by default. You can change this location:
+
+```bash
+export ERST_CACHE_DIR=/path/to/custom/cache
+```
+
+### RPC endpoints
+
+You can configure custom RPC endpoints for different networks:
+
+```bash
+export ERST_RPC_MAINNET=https://your-mainnet-rpc.com
+export ERST_RPC_TESTNET=https://your-testnet-rpc.com
+```
+
+## Updating Erst
+
+<Tabs>
+  <Tab title="Go install">
+    Update to the latest version:
+
+    ```bash
+    go install github.com/dotandev/hintents/cmd/erst@latest
+    ```
+  </Tab>
+
+  <Tab title="From source">
+    Pull the latest changes and rebuild:
+
+    ```bash
+    cd hintents
+    git pull origin main
+    make clean
+    cd simulator && cargo build --release && cd ..
+    make build
+    ```
+  </Tab>
+
+  <Tab title="Auto-update">
+    Erst includes an auto-update checker that notifies you when new versions are available:
+
+    ```bash
+    erst upgrade
+    ```
+
+    <Info>
+    The upgrade command checks for updates and displays installation instructions.
+    </Info>
+  </Tab>
+</Tabs>
+
+## Troubleshooting
+
+### Command not found
+
+If you get a "command not found" error:
+
+1. Ensure `$GOPATH/bin` is in your `PATH`:
+   ```bash
+   echo $PATH | grep -q "$GOPATH/bin" || echo 'export PATH="$PATH:$GOPATH/bin"' >> ~/.bashrc
+   source ~/.bashrc
+   ```
+
+2. Verify the binary location:
+   ```bash
+   which erst
+   ```
+
+### Rust simulator errors
+
+If you encounter errors related to the Rust simulator:
+
+1. Ensure you built the simulator:
+   ```bash
+   cd simulator && cargo build --release
+   ```
+
+2. Check Rust version:
+   ```bash
+   rustc --version  # Should be 1.70+
+   ```
+
+### Permission denied
+
+If you get permission errors:
+
+```bash
+chmod +x $(which erst)
+```
+
+### Cache issues
+
+If you experience cache-related problems:
+
+```bash
+erst cache clear --force
+```
+
+<Warning>
+This will delete all cached transaction data. You'll need to re-fetch transactions from the network.
+</Warning>
+
+## Next steps
+
+Now that Erst is installed, learn how to debug your first transaction:
+
+<Card title="Quick start guide" icon="rocket" href="/quickstart">
+  Debug a failed transaction in minutes
+</Card>

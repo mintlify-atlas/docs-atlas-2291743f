@@ -1,0 +1,508 @@
+---
+title: Working with sessions
+description: Save, resume, and manage debugging sessions to preserve state across CLI invocations
+---
+
+Sessions allow you to save complete debugging contexts and resume your work later. This is essential for complex investigations, team collaboration, and building a history of analyzed transactions.
+
+## Overview
+
+A debugging session stores:
+
+- Complete transaction data (envelope, metadata)
+- Simulation results (events, logs, traces)
+- Analysis context (network, timestamps)
+- Session metadata (creation time, access history)
+
+Sessions enable you to:
+
+- Resume debugging work after interruption
+- Share debugging context with team members
+- Build a searchable history of investigated transactions
+- Analyze patterns across multiple debugging sessions
+
+## Quick start
+
+<Steps>
+
+### Debug a transaction
+
+```bash
+erst debug abc123...def --network testnet
+```
+
+### Save the session
+
+```bash
+erst session save
+```
+
+### List saved sessions
+
+```bash
+erst session list
+```
+
+### Resume later
+
+```bash
+erst session resume <session-id>
+```
+
+</Steps>
+
+## Session commands
+
+### Save current session
+
+Save the active debugging session to disk:
+
+```bash
+erst session save
+```
+
+<Info>
+You must run `erst debug <tx-hash>` first to create an active session.
+</Info>
+
+#### Custom session ID
+
+Specify a memorable ID instead of auto-generated:
+
+```bash
+erst session save --id my-debug-session
+```
+
+**Auto-generated IDs** use the format:
+```
+<tx-hash-prefix>-<timestamp>
+```
+
+Example: `abc123-20260301143022`
+
+### List all sessions
+
+View all saved sessions, ordered by most recently accessed:
+
+```bash
+erst session list
+```
+
+**Example output:**
+```text
+Saved sessions (3):
+
+ID                   Network      Last Accessed        Transaction Hash
+--------------------------------------------------------------------------------
+abc123-20260301      testnet      2026-03-01 14:30    abc123def456789...
+my-debug-session     mainnet      2026-02-28 09:15    789def123abc456...
+token-transfer-001   mainnet      2026-02-25 16:45    456abc789def123...
+```
+
+### Resume a session
+
+Restore a previously saved session:
+
+```bash
+erst session resume <session-id>
+```
+
+**Flexible ID resolution:**
+
+You can provide:
+- Full session ID: `abc123-20260301143022`
+- Partial ID prefix: `abc123`
+- Transaction hash: `abc123def456...`
+- Fuzzy match: Closest matching ID
+
+**Example output:**
+```text
+Session resumed: abc123-20260301143022
+  Transaction: abc123def456789abcdef123456789abcdef123456789abcdef123456789abc
+  Network: testnet
+  Created: 2026-03-01T14:30:22Z
+  Last accessed: 2026-03-03T10:15:33Z
+
+Transaction Envelope:
+  Size: 2,048 bytes
+
+Simulation Results:
+  Status: failed
+  Error: InsufficientBalance
+  Events: 12
+  Logs: 45
+```
+
+<Note>
+Resuming a session loads all transaction data and simulation results, allowing you to continue analysis without re-fetching from the network.
+</Note>
+
+### Delete a session
+
+Remove a saved session permanently:
+
+```bash
+erst session delete <session-id>
+```
+
+<Warning>
+This action cannot be undone. The session data will be permanently deleted.
+</Warning>
+
+## Session storage
+
+### Location
+
+Sessions are stored in a local SQLite database:
+
+```
+~/.erst/sessions.db
+```
+
+### Schema
+
+Each session record contains:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | string | Unique session identifier |
+| `tx_hash` | string | Transaction hash |
+| `network` | string | Network name (mainnet, testnet) |
+| `envelope_xdr` | string | Base64-encoded transaction envelope |
+| `sim_response_json` | string | JSON-encoded simulation response |
+| `created_at` | timestamp | Session creation time |
+| `last_access_at` | timestamp | Last access/modification time |
+| `status` | string | Session status (saved, resumed) |
+| `schema_version` | int | Session data schema version |
+
+### Automatic cleanup
+
+Sessions are automatically cleaned up based on:
+
+**Time-to-live (TTL):**
+- Default: 30 days
+- Sessions older than TTL are deleted
+- Configurable via environment variable
+
+**Maximum sessions:**
+- Default: 100 sessions
+- Oldest sessions deleted when limit exceeded
+- Cleanup uses LRU (Least Recently Used) strategy
+
+```bash
+# Configure TTL (days)
+export ERST_SESSION_TTL=60
+
+# Configure max sessions
+export ERST_SESSION_MAX=200
+```
+
+## Common workflows
+
+### Save and share with team
+
+<Steps>
+
+### Debug transaction
+
+```bash
+erst debug abc123...def --network mainnet
+```
+
+### Save with descriptive ID
+
+```bash
+erst session save --id token-exploit-2026-03-01
+```
+
+### Export session data
+
+```bash
+# SQLite query to export session
+sqlite3 ~/.erst/sessions.db "SELECT * FROM sessions WHERE id='token-exploit-2026-03-01'" > session.json
+```
+
+### Share with team
+
+Share the session ID or exported JSON with colleagues. They can import or reference the same transaction.
+
+</Steps>
+
+### Resume interrupted work
+
+<Steps>
+
+### Start debugging
+
+```bash
+erst debug abc123...def --interactive
+# Start exploring trace...
+# [Ctrl+C to interrupt]
+```
+
+### Save session on exit
+
+```bash
+erst session save
+```
+
+### Continue later
+
+```bash
+# List to find session
+erst session list
+
+# Resume by ID prefix
+erst session resume abc123
+
+# Launch interactive viewer again
+erst debug abc123...def --interactive
+```
+
+</Steps>
+
+<Info>
+When you resume a session, Erst uses cached data instead of fetching from the network, making analysis instant.
+</Info>
+
+### Build investigation history
+
+<Steps>
+
+### Save each investigation
+
+As you debug different transactions, save sessions with descriptive names:
+
+```bash
+erst debug tx1... && erst session save --id exploit-attempt-1
+erst debug tx2... && erst session save --id exploit-attempt-2
+erst debug tx3... && erst session save --id exploit-attempt-3
+```
+
+### Review patterns
+
+List sessions to see your investigation history:
+
+```bash
+erst session list
+```
+
+### Compare results
+
+Resume different sessions to compare:
+
+```bash
+erst session resume exploit-attempt-1
+# Review results...
+
+erst session resume exploit-attempt-2
+# Compare with attempt 1...
+```
+
+</Steps>
+
+### Clean up old sessions
+
+Manually trigger cleanup:
+
+```bash
+# View current sessions
+erst session list
+
+# Delete specific old sessions
+erst session delete old-session-id
+
+# Automatic cleanup happens on save/resume
+erst session save  # Triggers cleanup internally
+```
+
+## Session compatibility
+
+### Schema versioning
+
+Sessions include a schema version number. When you update Erst:
+
+- **Compatible versions**: Sessions load normally
+- **Incompatible versions**: You'll see a warning and may need to re-debug the transaction
+
+```text
+Warning: Session schema version 2 is not compatible with current version 3.
+Please re-debug this transaction with: erst debug <tx-hash>
+```
+
+### Forward compatibility
+
+Newer Erst versions can read older sessions when possible. Breaking changes are documented in release notes.
+
+### Migration
+
+If schema migration is needed, Erst provides migration commands:
+
+```bash
+# Check if migration is needed
+erst session list
+
+# Migrate old sessions (if migration available)
+erst session migrate
+```
+
+## Advanced usage
+
+### Query sessions directly
+
+Access the SQLite database for custom queries:
+
+```bash
+# Find sessions by network
+sqlite3 ~/.erst/sessions.db "SELECT id, tx_hash FROM sessions WHERE network='testnet'"
+
+# Count sessions by status
+sqlite3 ~/.erst/sessions.db "SELECT status, COUNT(*) FROM sessions GROUP BY status"
+
+# Find oldest sessions
+sqlite3 ~/.erst/sessions.db "SELECT id, created_at FROM sessions ORDER BY created_at LIMIT 5"
+```
+
+### Backup sessions
+
+Back up your session database:
+
+```bash
+# Create backup
+cp ~/.erst/sessions.db ~/.erst/sessions.db.backup
+
+# Restore backup
+cp ~/.erst/sessions.db.backup ~/.erst/sessions.db
+```
+
+### Export session for reporting
+
+Extract session data for external analysis:
+
+```bash
+# Export as JSON
+sqlite3 ~/.erst/sessions.db "SELECT json_object(
+  'id', id,
+  'tx_hash', tx_hash,
+  'network', network,
+  'created_at', created_at
+) FROM sessions WHERE id='<session-id>'"
+```
+
+## Troubleshooting
+
+### No active session
+
+```text
+Error: no active session to save
+```
+
+**Solution:** Run `erst debug <tx-hash>` first to create a session before saving.
+
+### Session not found
+
+```text
+Error: session not found: abc123
+```
+
+**Solutions:**
+- Check session ID with `erst session list`
+- Verify spelling of session ID
+- Session may have been cleaned up (check TTL)
+- Try providing full session ID instead of prefix
+
+### Database locked
+
+```text
+Error: database is locked
+```
+
+**Solutions:**
+- Close other Erst processes accessing sessions
+- Wait a moment and try again
+- Check file permissions on `~/.erst/sessions.db`
+
+### Schema version mismatch
+
+```text
+Error: session schema version 3 is not compatible with current version 2
+```
+
+**Solutions:**
+- Update Erst to the latest version
+- Re-debug the transaction with current Erst version
+- Check migration documentation in release notes
+
+## Implementation details
+
+### Source files
+
+Session management is implemented in:
+
+- `internal/cmd/session.go` - CLI commands
+- `internal/session/store.go` - Database operations
+- `internal/session/schema.go` - Data structures
+
+### Functions
+
+**Key functions:**
+
+- `SetCurrentSession()` - Stores active session from debug command
+- `GetCurrentSession()` - Retrieves current session if any
+- `Store.Save()` - Persists session to database
+- `Store.Load()` - Retrieves session by ID
+- `Store.List()` - Lists all sessions
+- `Store.Delete()` - Removes session
+- `Store.Cleanup()` - Runs LRU cleanup
+
+**Location:** `internal/cmd/session.go:24`, `internal/cmd/session.go:29`
+
+## Best practices
+
+<Accordion title="Use descriptive IDs">
+Custom IDs make sessions easier to find:
+```bash
+erst session save --id contract-upgrade-bug-2026-03
+```
+Better than auto-generated: `abc123-20260301143022`
+</Accordion>
+
+<Accordion title="Save after important findings">
+Save sessions when you discover something important:
+```bash
+# Found the root cause
+erst session save --id rootcause-insufficient-allowance
+```
+This creates a reference point you can return to.
+</Accordion>
+
+<Accordion title="Clean up regularly">
+Delete sessions you no longer need:
+```bash
+erst session list
+erst session delete old-test-session
+```
+Keeps the session list manageable.
+</Accordion>
+
+<Accordion title="Back up before major updates">
+Before updating Erst to a new major version:
+```bash
+cp ~/.erst/sessions.db ~/.erst/sessions.db.backup
+```
+Protects against schema compatibility issues.
+</Accordion>
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Debugging failed transactions" icon="bug" href="/guides/debugging-failed-transactions">
+    Learn how to create sessions during debugging
+  </Card>
+  <Card title="Cache management" icon="database" href="/guides/cache-management">
+    Understand how caching complements sessions
+  </Card>
+  <Card title="Using flamegraphs" icon="chart-line" href="/guides/using-flamegraphs">
+    Save profiling data in sessions
+  </Card>
+</CardGroup>

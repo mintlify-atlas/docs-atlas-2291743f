@@ -1,0 +1,592 @@
+---
+title: Local WASM replay
+description: Test and debug Stellar smart contracts locally without network access or deployment
+---
+
+Local WASM replay allows you to test smart contracts on your development machine without deploying to any network. This accelerates the development cycle and enables rapid iteration during contract development.
+
+## Overview
+
+Local WASM replay:
+
+- Loads WASM files directly from your filesystem
+- Executes contracts in a local Soroban environment
+- Uses mock state (no real ledger data)
+- Captures diagnostic events and logs
+- Supports basic argument types
+- Enforces Soroban VM compatibility
+
+<Info>
+Local replay uses **mock state**, not mainnet or testnet data. This mode is intended for rapid contract development and testing, not production debugging.
+</Info>
+
+## Quick start
+
+Run a local WASM file:
+
+```bash
+erst debug --wasm ./contract.wasm
+```
+
+With function arguments:
+
+```bash
+erst debug --wasm ./contract.wasm --args "arg1" --args "arg2"
+```
+
+With verbose output:
+
+```bash
+erst debug --wasm ./contract.wasm --args "hello" --verbose
+```
+
+## Building contracts for replay
+
+<Steps>
+
+### Write your Soroban contract
+
+```rust
+#![no_std]
+use soroban_sdk::{contract, contractimpl, symbol_short, Env, Symbol};
+
+#[contract]
+pub struct HelloContract;
+
+#[contractimpl]
+impl HelloContract {
+    pub fn hello(env: Env, name: Symbol) -> Symbol {
+        symbol_short!("Hello")
+    }
+}
+```
+
+### Build the contract
+
+```bash
+cd contract
+cargo build --target wasm32-unknown-unknown --release
+```
+
+### Optimize the WASM
+
+```bash
+soroban contract optimize \
+  --wasm target/wasm32-unknown-unknown/release/contract.wasm
+```
+
+This produces `contract-optimized.wasm`.
+
+### Test locally with Erst
+
+```bash
+erst debug --wasm contract-optimized.wasm --args "World"
+```
+
+</Steps>
+
+## Arguments
+
+Local WASM replay supports basic Soroban argument types:
+
+### Integer arguments
+
+```bash
+erst debug --wasm ./contract.wasm --args "42" --args "100"
+```
+
+Parsed as `u32` or `i32` depending on contract signature.
+
+### Symbol/String arguments
+
+```bash
+erst debug --wasm ./contract.wasm --args "transfer" --args "USDC"
+```
+
+Parsed as Soroban `Symbol` type.
+
+### Multiple arguments
+
+Pass multiple `--args` flags in order:
+
+```bash
+erst debug --wasm ./contract.wasm \
+  --args "sender" \
+  --args "receiver" \
+  --args "1000"
+```
+
+Arguments are passed to the contract function in the order specified.
+
+<Note>
+Complex types (Maps, Vectors, Addresses) are not yet supported. Use integers and symbols for testing.
+</Note>
+
+## Example output
+
+Running local WASM replay:
+
+```bash
+erst debug --wasm ./token.wasm --args "hello" --args "world"
+```
+
+**Output:**
+
+```text
+[WARN]  WARNING: Using Mock State (not mainnet data)
+
+[TOOL] Local WASM Replay Mode
+WASM File: ./token.wasm
+Arguments: [hello, world]
+
+[OK] Initialized Host with diagnostic level: Debug
+[OK] Contract registered at: Contract(0000...)
+▶ Invoking function: hello
+
+[OK] Execution successful
+
+[LIST] Logs:
+  Host Budget: cpu_insns=12450, mem_bytes=8192
+  Result: Symbol(world)
+
+[LIST] Events:
+  1. contract: Contract(0000...), topics: [hello], data: world
+  2. diagnostic: fn_call, data: hello(Symbol(world))
+
+[DIAG] Performance:
+  CPU: 12,450 instructions (0.12% of limit)
+  Memory: 8,192 bytes (0.08% of limit)
+```
+
+## Mock state warning
+
+When using `--wasm`, you'll always see:
+
+```text
+[WARN]  WARNING: Using Mock State (not mainnet data)
+```
+
+This indicates:
+
+- No real ledger data is available
+- Contract storage is empty
+- External contract calls may fail
+- Token balances are zero
+- Authorization checks use mock identities
+
+**Use cases for mock state:**
+
+- Testing pure functions (no storage access)
+- Validating computation logic
+- Checking WASM compatibility
+- Rapid iteration during development
+- Unit testing without deployment
+
+**When NOT to use mock state:**
+
+- Debugging production failures (use real transaction hash)
+- Testing storage interactions (use testnet)
+- Validating cross-contract calls (use network)
+- Analyzing real user transactions
+
+## Soroban compatibility
+
+Erst enforces Soroban VM restrictions:
+
+### Floating-point detection
+
+The simulator rejects WASM binaries containing floating-point instructions:
+
+```text
+Error: WASM contains floating-point instructions
+Soroban does not support non-deterministic floating-point operations.
+```
+
+**Solution:** Remove all `f32` and `f64` usage from your contract:
+
+```rust
+// ❌ Don't use floating-point
+fn calculate_interest(amount: f64, rate: f64) -> f64 {
+    amount * rate
+}
+
+// ✅ Use fixed-point integer math
+fn calculate_interest(amount: u64, rate_bps: u32) -> u64 {
+    amount * (rate_bps as u64) / 10000
+}
+```
+
+### Determinism enforcement
+
+Erst ensures your contract produces deterministic results:
+
+- No floating-point operations
+- No system calls (time, random)
+- Consistent execution across runs
+- Predictable resource consumption
+
+This keeps local behavior aligned with on-chain restrictions.
+
+## Diagnostic logging
+
+### Standard output
+
+By default, Erst shows:
+
+- Execution status (success/failure)
+- Function result
+- Summary of logs and events
+- Performance metrics (CPU, memory)
+
+### Verbose mode
+
+Enable detailed diagnostics:
+
+```bash
+erst debug --wasm ./contract.wasm --verbose
+```
+
+**Additional output:**
+
+- Detailed host budget breakdown
+- Full event data structures
+- WASM module information
+- Instruction-level traces
+- Memory allocation details
+
+### Performance profiling
+
+Generate flamegraphs for local execution:
+
+```bash
+erst debug --wasm ./contract.wasm --profile
+```
+
+Creates `contract.flamegraph.html` showing:
+
+- Function call hierarchy
+- CPU time per function
+- Memory allocation patterns
+- Hot paths in execution
+
+See [Using flamegraphs](/guides/using-flamegraphs) for details.
+
+## Common workflows
+
+### Rapid iteration loop
+
+<Steps>
+
+### Edit contract code
+
+```rust
+// Modify contract logic
+pub fn transfer(env: Env, amount: i128) -> i128 {
+    // New implementation
+    amount * 2
+}
+```
+
+### Rebuild
+
+```bash
+cargo build --target wasm32-unknown-unknown --release
+```
+
+### Test locally
+
+```bash
+erst debug --wasm target/wasm32-unknown-unknown/release/contract.wasm \
+  --args "1000"
+```
+
+### Verify result
+
+Check output, repeat if needed.
+
+</Steps>
+
+No network deployment required - iterate in seconds.
+
+### Pre-deployment validation
+
+<Steps>
+
+### Test locally
+
+```bash
+erst debug --wasm ./contract.wasm --args "test_input"
+```
+
+### Verify WASM compatibility
+
+Ensure no floating-point or unsupported operations.
+
+### Deploy to testnet
+
+```bash
+soroban contract deploy \
+  --wasm contract.wasm \
+  --network testnet
+```
+
+### Test on testnet
+
+```bash
+erst debug <testnet-tx-hash> --network testnet
+```
+
+</Steps>
+
+Catch issues locally before wasting testnet transactions.
+
+### Regression testing
+
+Create a test suite:
+
+```bash
+#!/bin/bash
+# test-suite.sh
+
+echo "Running contract tests..."
+
+# Test case 1: Basic transfer
+erst debug --wasm ./contract.wasm --args "1000" > /dev/null
+if [ $? -eq 0 ]; then
+    echo "✓ Test 1 passed"
+else
+    echo "✗ Test 1 failed"
+    exit 1
+fi
+
+# Test case 2: Zero amount
+erst debug --wasm ./contract.wasm --args "0" > /dev/null
+if [ $? -eq 0 ]; then
+    echo "✓ Test 2 passed"
+else
+    echo "✗ Test 2 failed"
+    exit 1
+fi
+
+echo "All tests passed!"
+```
+
+Run before commits:
+
+```bash
+chmod +x test-suite.sh
+./test-suite.sh
+```
+
+### Compare local vs network
+
+<Steps>
+
+### Test locally first
+
+```bash
+erst debug --wasm ./contract.wasm --args "input" > local-output.txt
+```
+
+### Deploy and test on network
+
+```bash
+# Deploy
+CONTRACT_ID=$(soroban contract deploy --wasm contract.wasm --network testnet)
+
+# Invoke
+soroban contract invoke \
+  --id $CONTRACT_ID \
+  --network testnet \
+  -- function_name --arg input
+```
+
+### Compare results
+
+Verify local behavior matches network behavior.
+
+</Steps>
+
+## Limitations
+
+### Mock state restrictions
+
+Local WASM replay cannot test:
+
+- Contract storage reads/writes (storage is empty)
+- Cross-contract invocations (no other contracts exist)
+- Token transfers (no token contracts)
+- Authorization (uses mock signers)
+- Time-dependent logic (fixed timestamp)
+- Network-specific state
+
+**Solution:** Use testnet for integration testing:
+
+```bash
+erst debug <transaction-hash> --network testnet
+```
+
+### Argument type limitations
+
+Currently supported:
+- Integers (`u32`, `i32`, `u64`, `i64`)
+- Symbols (short strings)
+
+Not yet supported:
+- Addresses
+- Maps
+- Vectors
+- Custom types
+- Bytes
+
+**Workaround:** Test complex types on testnet.
+
+### No state persistence
+
+Each replay starts with empty state:
+
+```bash
+# Run 1: Storage is empty
+erst debug --wasm ./contract.wasm --args "save"
+
+# Run 2: Storage is STILL empty (previous run didn't persist)
+erst debug --wasm ./contract.wasm --args "load"
+```
+
+**Solution:** Use testnet for stateful testing.
+
+## Advanced usage
+
+### Custom function invocation
+
+By default, Erst invokes the first exported function. To call a specific function:
+
+<Note>
+Direct function selection is not yet implemented. Deploy to testnet and use `soroban contract invoke` to call specific functions.
+</Note>
+
+### Batch testing
+
+Test multiple WASM files:
+
+```bash
+#!/bin/bash
+for wasm in contracts/*.wasm; do
+    echo "Testing $wasm..."
+    erst debug --wasm "$wasm" --args "test"
+done
+```
+
+### Integration with CI/CD
+
+Add to GitHub Actions:
+
+```yaml
+name: Contract Tests
+
+on: [push, pull_request]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Install Erst
+        run: |
+          curl -L https://github.com/dotandev/hintents/releases/latest/download/erst-linux-amd64 -o erst
+          chmod +x erst
+          
+      - name: Build contracts
+        run: cargo build --target wasm32-unknown-unknown --release
+        
+      - name: Test with Erst
+        run: ./erst debug --wasm target/wasm32-unknown-unknown/release/contract.wasm --args "test"
+```
+
+## Troubleshooting
+
+### WASM file not found
+
+```text
+Error: failed to load WASM file: ./contract.wasm
+```
+
+**Solutions:**
+- Check file path: `ls -la ./contract.wasm`
+- Use absolute path: `erst debug --wasm /full/path/to/contract.wasm`
+- Verify file exists and is readable
+
+### Invalid WASM format
+
+```text
+Error: invalid WASM binary
+```
+
+**Solutions:**
+- Rebuild contract: `cargo build --target wasm32-unknown-unknown --release`
+- Verify WASM magic bytes: `hexdump -C contract.wasm | head -n 1`
+- Check file isn't corrupted: `file contract.wasm`
+
+### Execution failed
+
+```text
+Error: contract execution failed: <error message>
+```
+
+**Solutions:**
+- Check contract expects the arguments you provided
+- Verify contract doesn't require storage (not available locally)
+- Test with `--verbose` for detailed error info
+- Deploy to testnet for full environment
+
+### Floating-point error
+
+```text
+Error: WASM contains floating-point instructions
+```
+
+**Solutions:**
+- Remove all `f32`/`f64` types from contract
+- Use fixed-point integer math instead
+- Check dependencies don't use floating-point
+- Rebuild with `--release` (some debug code uses floats)
+
+## Implementation details
+
+### Architecture
+
+**CLI Layer (Go):**
+- `internal/cmd/debug.go` - Handles `--wasm` flag
+- `internal/simulator/schema.go` - Extended with `wasm_path`, `mock_args`
+
+**Simulator Layer (Rust):**
+- `simulator/src/main.rs` - Contains `run_local_wasm_replay()`
+- Loads WASM from disk
+- Initializes Soroban Host
+- Deploys contract to host
+- Parses arguments
+- Invokes contract function
+- Captures diagnostic events
+
+### Source files
+
+Local WASM replay implementation:
+
+- `internal/cmd/debug.go` - CLI integration
+- `simulator/src/main.rs` - Core replay logic
+- `simulator/src/wasm.rs` - WASM loading and validation
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Debugging failed transactions" icon="bug" href="/guides/debugging-failed-transactions">
+    Debug real transactions with full network state
+  </Card>
+  <Card title="Using flamegraphs" icon="chart-line" href="/guides/using-flamegraphs">
+    Profile local WASM execution performance
+  </Card>
+  <Card title="Working with sessions" icon="floppy-disk" href="/guides/working-with-sessions">
+    Save local test results for later review
+  </Card>
+</CardGroup>

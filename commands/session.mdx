@@ -1,0 +1,199 @@
+---
+title: erst session
+description: Manage debugging sessions
+---
+
+Save, resume, and manage debugging sessions to preserve state across CLI invocations.
+
+## Usage
+
+```bash
+erst session <subcommand> [flags]
+```
+
+## Description
+
+Sessions store complete transaction data, simulation results, and analysis context, allowing you to:
+
+- Resume debugging work later
+- Share debugging context with team members
+- Build a history of investigated transactions
+- Analyze patterns across multiple sessions
+
+<Info>
+Sessions are stored in `~/.erst/sessions/` by default and include transaction envelopes, simulation results, ledger state, and metadata.
+</Info>
+
+## Subcommands
+
+- [save](#save) - Save the current debugging session
+- [resume](#resume) - Restore a saved session
+- [list](#list) - View all saved sessions
+- [delete](#delete) - Remove a saved session
+
+## save
+
+Save the current debug session state to disk for later resumption.
+
+### Usage
+
+```bash
+erst session save [flags]
+```
+
+<Warning>
+You must run `erst debug <tx-hash>` first to create an active session.
+</Warning>
+
+### Flags
+
+<ParamField path="--id" type="string">
+  Custom session ID
+  
+  If not specified, an ID is auto-generated from the transaction hash.
+</ParamField>
+
+### Examples
+
+<CodeGroup>
+```bash Auto-generated ID
+erst debug abc123...def
+erst session save
+```
+
+```bash Custom ID
+erst debug abc123...def
+erst session save --id my-debug-session
+```
+</CodeGroup>
+
+## resume
+
+Restore a previously saved debug session by ID.
+
+### Usage
+
+```bash
+erst session resume <session-id>
+```
+
+### Arguments
+
+<ParamField path="session-id" type="string" required>
+  Session ID to resume
+  
+  Supports:
+  - Exact ID match
+  - Partial ID prefix
+  - Transaction hash
+  - Fuzzy matching
+</ParamField>
+
+### Examples
+
+<CodeGroup>
+```bash Resume by ID
+erst session resume abc123
+```
+
+```bash List then resume
+erst session list
+erst session resume my-session
+```
+</CodeGroup>
+
+### Output
+
+When resuming a session, displays:
+
+- Session ID and creation time
+- Transaction hash and network
+- Last access time
+- Transaction envelope size
+- Simulation results summary
+- Event and log counts
+
+## list
+
+List all saved debugging sessions, ordered by most recently accessed.
+
+### Usage
+
+```bash
+erst session list
+```
+
+### Output
+
+Displays a table with:
+
+- Session ID
+- Network (testnet, mainnet, etc.)
+- Last accessed timestamp
+- Transaction hash
+
+### Example output
+
+```
+Saved sessions (3):
+
+ID                   Network      Last Accessed        Transaction Hash
+--------------------------------------------------------------------------------
+my-debug-session     testnet      2026-03-01 14:23     abc123def456...
+token-transfer       mainnet      2026-02-28 09:15     789abc012def...
+failed-mint          testnet      2026-02-27 16:42     345678901abc...
+```
+
+## delete
+
+Remove a saved debugging session by ID.
+
+### Usage
+
+```bash
+erst session delete <session-id>
+```
+
+<Warning>
+This action cannot be undone. The session data will be permanently deleted.
+</Warning>
+
+### Arguments
+
+<ParamField path="session-id" type="string" required>
+  Session ID to delete
+  
+  Supports the same flexible matching as `resume`.
+</ParamField>
+
+### Example
+
+```bash
+erst session delete abc123
+```
+
+## Session lifecycle
+
+Sessions are automatically cleaned up based on:
+
+- **TTL**: Default 30 days (configurable)
+- **Max sessions**: Default 50 (configurable)
+- **Cleanup strategy**: Least Recently Used (LRU)
+
+Cleanup runs automatically during `save`, `resume`, and `list` operations.
+
+## Session data
+
+Each session stores:
+
+- **Transaction data**: Envelope XDR and result meta XDR
+- **Simulation results**: Events, logs, diagnostic events
+- **Ledger state**: All ledger entries accessed during execution
+- **Metadata**: Network, timestamp, schema version
+- **Request context**: Original simulation request parameters
+
+## Related commands
+
+- [debug](/commands/debug) - Create sessions from transactions
+- [export](/commands/export) - Export session data
+- [cache](/commands/cache) - Manage cached transaction data

@@ -1,0 +1,380 @@
+---
+title: Performance profiling
+description: Generate interactive flamegraphs to visualize CPU and memory consumption
+---
+
+Performance profiling in Erst helps you identify bottlenecks in smart contract execution by generating interactive flamegraphs that visualize CPU and memory consumption. These flamegraphs show exactly where your contract spends time and resources.
+
+## Generating flamegraphs
+
+Enable profiling with the `--profile` flag:
+
+```bash
+erst debug --profile <transaction-hash>
+```
+
+This generates an interactive HTML file:
+
+```
+Generated: abc123def456.flamegraph.html
+```
+
+### Output formats
+
+Choose between HTML and SVG formats:
+
+<Tabs>
+  <Tab title="HTML (Interactive)">
+    Generate a standalone interactive HTML file with hover tooltips and zoom:
+    ```bash
+    erst debug --profile --profile-format html <transaction-hash>
+    ```
+    
+    File: `<transaction-hash>.flamegraph.html`
+  </Tab>
+  
+  <Tab title="SVG (Static)">
+    Generate a raw SVG file for embedding or editing:
+    ```bash
+    erst debug --profile --profile-format svg <transaction-hash>
+    ```
+    
+    File: `<transaction-hash>.flamegraph.svg`
+  </Tab>
+</Tabs>
+
+<Note>
+HTML is the default format and provides the best user experience. Use SVG only if you need to embed the flamegraph in other tools or documents.
+</Note>
+
+## Understanding flamegraphs
+
+Flamegraphs visualize the call stack over time:
+
+### Reading the graph
+
+- **X-axis (width)**: Proportion of time/resources consumed
+- **Y-axis (height)**: Call stack depth (bottom = entry point, top = leaf calls)
+- **Colors**: Different contract functions and host operations
+- **Frame size**: Larger frames = more time/resources consumed
+
+### Example structure
+
+```
+┌──────────────────────────────────────────────────┐  ← Root
+│             transaction_invoke                   │
+├─────────────────┬──────────────┬─────────────────┤
+│  transfer (40%) │ mint (30%)   │ require_auth    │  ← Contract calls
+├────────┬────────┼──────────────┤                 │
+│ check  │ update │ create_token │                 │  ← Nested calls
+│ (20%)  │ (20%)  │   (30%)      │                 │
+└────────┴────────┴──────────────┴─────────────────┘
+```
+
+In this example:
+- `transfer` consumed 40% of total resources
+- Within `transfer`, `check` and `update` each used 20%
+- `mint` consumed 30%, all within `create_token`
+
+## Interactive features
+
+### Hover tooltips
+
+Hover over any frame to see detailed information:
+
+```
+Function: token::transfer
+File: token.rs:45
+Duration: 150,000 CPU instructions
+Percentage: 42.3% of total
+Memory: 2,048 bytes
+```
+
+### Click-to-zoom
+
+Click any frame to zoom in and focus on that section:
+
+<Steps>
+  <Step title="Click a frame">
+    Click on any function in the flamegraph to zoom into that call subtree.
+  </Step>
+  
+  <Step title="Analyze bottleneck">
+    Examine the zoomed view to see all nested calls and their relative costs.
+  </Step>
+  
+  <Step title="Reset zoom">
+    Click the "Reset Zoom" button to return to the full view.
+  </Step>
+</Steps>
+
+<Info>
+Zooming helps you focus on specific hot paths without visual clutter from other parts of the execution.
+</Info>
+
+### Search and highlight
+
+Find specific functions or operations:
+
+<Steps>
+  <Step title="Open search">
+    Use the search box at the top of the flamegraph.
+  </Step>
+  
+  <Step title="Enter function name">
+    Type the function name, contract ID, or operation you're looking for.
+  </Step>
+  
+  <Step title="View matches">
+    Matching frames are highlighted in magenta across the entire graph.
+  </Step>
+  
+  <Step title="Clear highlights">
+    Click "Clear" to remove highlights and reset the view.
+  </Step>
+</Steps>
+
+Search is case-insensitive:
+```
+Search: "require_auth" → Highlights all auth operations
+Search: "transfer" → Highlights all transfer functions
+Search: "CDLZFC" → Highlights specific contract
+```
+
+## Profiling metrics
+
+### CPU consumption
+
+Flamegraphs show CPU instruction counts for each operation:
+
+- **Contract execution**: WASM instructions executed
+- **Host functions**: Built-in Stellar operations
+- **Storage operations**: Read/write costs
+- **Cryptographic operations**: Signature verification, hashing
+
+### Memory consumption
+
+Memory usage is tracked for:
+
+- **WASM linear memory**: Contract heap allocations
+- **Host environment**: Temporary buffers and state
+- **Storage entries**: Ledger entry sizes
+
+<CodeGroup>
+```bash CPU profiling
+erst debug --profile <transaction-hash>
+# Default: shows CPU instruction counts
+```
+
+```bash Memory profiling
+erst debug --profile --profile-metric memory <transaction-hash>
+# Shows memory allocation sizes
+```
+</CodeGroup>
+
+## Analyzing performance issues
+
+### Identifying hot paths
+
+Look for the widest frames at each level:
+
+<Steps>
+  <Step title="Find the widest frame">
+    The widest frame at any level consumes the most resources.
+  </Step>
+  
+  <Step title="Trace upwards">
+    Follow the frame downwards to see what nested calls contribute to the cost.
+  </Step>
+  
+  <Step title="Optimize target">
+    Focus optimization efforts on the leaves of hot paths.
+  </Step>
+</Steps>
+
+### Common performance patterns
+
+#### Excessive storage reads
+
+```
+┌──────────────────────────────────────┐
+│         transfer                     │
+├──────────────────────────────────────┤
+│    get_contract_data (60%)           │  ← Too many reads
+├──────────────────────────────────────┤
+│         actual_transfer (40%)        │
+└──────────────────────────────────────┘
+```
+
+**Solution**: Batch storage reads or cache values.
+
+#### Deep call stacks
+
+```
+┌─────┐
+│  A  │
+├─────┤
+│  B  │
+├─────┤
+│  C  │  ← Very deep stack
+├─────┤
+│  D  │
+├─────┤
+│  E  │
+└─────┘
+```
+
+**Solution**: Flatten call hierarchy or use iterative approaches.
+
+#### Repeated operations
+
+```
+┌────┬────┬────┬────┬────┬────┐
+│ h1 │ h2 │ h3 │ h4 │ h5 │... │  ← Many identical calls
+└────┴────┴────┴────┴────┴────┘
+```
+
+**Solution**: Batch operations or use single bulk call.
+
+## Profiling workflow
+
+<Steps>
+  <Step title="Profile the transaction">
+    Generate a flamegraph for your failed or slow transaction:
+    ```bash
+    erst debug --profile abc123def456 --network testnet
+    ```
+  </Step>
+  
+  <Step title="Open in browser">
+    Open the generated HTML file in your browser:
+    ```bash
+    open abc123def456.flamegraph.html
+    ```
+  </Step>
+  
+  <Step title="Identify bottlenecks">
+    Look for wide frames that consume disproportionate resources.
+  </Step>
+  
+  <Step title="Zoom and search">
+    Use click-to-zoom and search to explore specific hot paths.
+  </Step>
+  
+  <Step title="Correlate with source">
+    Use the file and line information from hover tooltips to locate code.
+  </Step>
+  
+  <Step title="Optimize and re-profile">
+    Make changes to your contract and generate a new flamegraph to verify improvements.
+  </Step>
+</Steps>
+
+## Dark mode support
+
+Flamegraphs automatically adapt to your system theme:
+
+<Tabs>
+  <Tab title="Light mode">
+    - White background
+    - Dark text
+    - Bright colors for frames
+  </Tab>
+  
+  <Tab title="Dark mode">
+    - Dark background (#1e1e2e)
+    - Light text (#cdd6f4)  
+    - Adjusted frame colors for contrast
+  </Tab>
+</Tabs>
+
+<Note>
+Dark mode is detected automatically using CSS media queries. No configuration needed.
+</Note>
+
+## Comparing performance
+
+Profile multiple transactions to compare performance:
+
+```bash
+# Profile original transaction
+erst debug --profile tx1 --network testnet
+
+# Profile optimized transaction
+erst debug --profile tx2 --network testnet
+```
+
+Open both flamegraphs side by side in your browser to compare:
+- Frame width differences show performance improvements
+- Removed frames indicate eliminated operations
+- New frames show added functionality
+
+## Export and sharing
+
+Flamegraphs are standalone files that can be:
+
+- **Shared with team members**: Send the HTML file directly
+- **Embedded in documentation**: Include SVG format in docs
+- **Archived for history**: Store with transaction data for future reference
+- **Opened offline**: No external dependencies or network requests
+
+<CodeGroup>
+```bash Generate for sharing
+erst debug --profile --profile-format html <transaction-hash>
+# Creates self-contained HTML file
+```
+
+```bash Generate for embedding
+erst debug --profile --profile-format svg <transaction-hash>
+# Creates SVG for documentation
+```
+</CodeGroup>
+
+## Browser compatibility
+
+Interactive HTML flamegraphs work in all modern browsers:
+
+- Chrome/Edge 88+
+- Firefox 78+
+- Safari 14+
+- Opera 74+
+
+<Warning>
+Very old browsers (IE11, old mobile browsers) may not support all interactive features. Use a modern browser for the best experience.
+</Warning>
+
+## Tips for profiling
+
+### Use profiling early
+
+Profile during development, not just when you have problems:
+- Catch performance issues before deployment
+- Understand baseline costs of operations
+- Compare different implementation approaches
+
+### Focus on hot paths
+
+Don't optimize everything:
+- Target the widest frames (biggest impact)
+- Ignore thin frames (minimal impact)
+- Consider code complexity vs performance gain
+
+### Profile realistic transactions
+
+Use representative data:
+- Real-world transaction sizes
+- Typical argument values
+- Expected contract state
+
+### Combine with other tools
+
+Use profiling alongside:
+- [Interactive trace viewer](/features/interactive-trace-viewer) for step-by-step analysis
+- [Source mapping](/features/source-mapping) for exact code locations
+- Unit tests to isolate specific functions
+
+## Next steps
+
+- Learn about [Source mapping](/features/source-mapping) to see source code in profiles
+- Use the [Interactive trace viewer](/features/interactive-trace-viewer) for detailed step analysis
+- Set up [Offline analysis](/features/offline-analysis) to profile without network access

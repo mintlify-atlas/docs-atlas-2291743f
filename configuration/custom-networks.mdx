@@ -1,0 +1,392 @@
+---
+title: Custom networks
+description: Connect Erst to private Stellar networks, local development environments, and custom network configurations
+---
+
+Erst supports debugging transactions on private Stellar networks, local development environments, and custom network configurations. This is essential for enterprises running private constellations or developers testing on local networks.
+
+## Features
+
+- Connect to private/local Stellar networks
+- Secure storage of network configurations with encrypted passphrases
+- Support for custom Horizon and Soroban RPC endpoints
+- Manage multiple custom network profiles
+- File permissions set to `0600` for security
+
+## Quick start
+
+### One-time custom network usage
+
+Debug a transaction on a custom network without saving the configuration:
+
+```bash
+erst debug <tx-hash> \
+  --custom-network \
+  --horizon-url http://localhost:8000 \
+  --network-passphrase "Local Development Network" \
+  --soroban-rpc http://localhost:8001
+```
+
+### Save a network profile
+
+Save a custom network configuration for repeated use:
+
+```bash
+# Add a custom network
+erst network add local-dev \
+  --horizon-url http://localhost:8000 \
+  --network-passphrase "Local Development Network" \
+  --soroban-rpc http://localhost:8001
+
+# Use the saved profile
+erst debug <tx-hash> --network local-dev
+```
+
+## Managing custom networks
+
+### List all networks
+
+```bash
+erst network list
+```
+
+Output:
+```
+Custom Networks:
+- local-dev
+- staging
+- private-prod
+```
+
+### Show network details
+
+```bash
+erst network show local-dev
+```
+
+Output:
+```json
+{
+  "name": "local-dev",
+  "horizon_url": "http://localhost:8000",
+  "network_passphrase": "Local Development Network",
+  "soroban_rpc_url": "http://localhost:8001"
+}
+```
+
+### Remove a network
+
+```bash
+erst network remove local-dev
+```
+
+## Configuration file
+
+Custom networks are stored in `~/.erst/networks.json` with restricted permissions (`0600`):
+
+```json ~/.erst/networks.json
+{
+  "networks": {
+    "local-dev": {
+      "name": "local-dev",
+      "horizon_url": "http://localhost:8000",
+      "network_passphrase": "Local Development Network",
+      "soroban_rpc_url": "http://localhost:8001"
+    },
+    "staging": {
+      "name": "staging",
+      "horizon_url": "https://horizon-staging.example.com",
+      "network_passphrase": "Staging Network ; January 2025",
+      "soroban_rpc_url": "https://soroban-staging.example.com"
+    }
+  }
+}
+```
+
+<Warning>
+Never commit `~/.erst/networks.json` to version control as it may contain sensitive network passphrases.
+</Warning>
+
+## Common use cases
+
+### Local Soroban development
+
+Set up Erst for local Soroban contract development:
+
+```bash
+# Start local soroban network
+stellar network start local
+
+# Add the local network to Erst
+erst network add local \
+  --horizon-url http://localhost:8000 \
+  --network-passphrase "Standalone Network ; February 2017" \
+  --soroban-rpc http://localhost:8000/soroban/rpc
+
+# Debug transactions on local network
+erst debug <tx-hash> --network local
+```
+
+<Info>
+The standard standalone network passphrase is `Standalone Network ; February 2017`.
+</Info>
+
+### Enterprise private network
+
+Configure Erst for your company's private Stellar constellation:
+
+```bash
+# Add your private constellation
+erst network add private-prod \
+  --horizon-url https://horizon.internal.company.com \
+  --network-passphrase "Company Private Network ; 2025" \
+  --soroban-rpc https://soroban.internal.company.com
+
+# Debug on private network
+erst debug <tx-hash> --network private-prod
+```
+
+### Staging environment
+
+Set up a staging network for pre-production testing:
+
+```bash
+# Add staging network
+erst network add staging \
+  --horizon-url https://horizon-staging.example.com \
+  --network-passphrase "Staging Network" \
+  --soroban-rpc https://soroban-staging.example.com
+
+# Debug on staging
+erst debug <tx-hash> --network staging
+```
+
+## Complete workflow example
+
+Here's a complete workflow for local contract development:
+
+```bash
+# 1. Start local network
+stellar network start local
+
+# 2. Deploy a contract
+stellar contract deploy --wasm contract.wasm --network local
+
+# 3. Invoke the contract (this might fail)
+stellar contract invoke --id <contract-id> --network local -- my_function
+
+# 4. Add local network to Erst
+erst network add local \
+  --horizon-url http://localhost:8000 \
+  --network-passphrase "Standalone Network ; February 2017" \
+  --soroban-rpc http://localhost:8000/soroban/rpc
+
+# 5. Debug the failed transaction
+erst debug <tx-hash> --network local
+```
+
+## Security
+
+### Network passphrase protection
+
+Erst implements several security measures for protecting sensitive network information:
+
+- Network passphrases are stored in `~/.erst/networks.json`
+- File permissions are automatically set to `0600` (owner read/write only)
+- Config directory permissions are set to `0700` (owner access only)
+- Sensitive data is never logged or displayed in error messages
+
+### Best practices
+
+<Accordion title="Version control">
+  **Never commit** `~/.erst/networks.json` to version control.
+  
+  Add to `.gitignore`:
+  ```
+  .erst/
+  networks.json
+  ```
+</Accordion>
+
+<Accordion title="CI/CD environments">
+  **Use environment variables** for CI/CD environments:
+  
+  ```bash
+  export ERST_HORIZON_URL="http://localhost:8000"
+  export ERST_NETWORK_PASSPHRASE="Local Network"
+  erst debug <tx-hash> --custom-network
+  ```
+</Accordion>
+
+<Accordion title="Production networks">
+  **Rotate passphrases** regularly for production networks and restrict access to the `.erst` directory on shared systems.
+  
+  ```bash
+  chmod 700 ~/.erst
+  chmod 600 ~/.erst/networks.json
+  ```
+</Accordion>
+
+## Programmatic usage
+
+You can also manage custom networks programmatically using the Go API:
+
+### Create a custom network client
+
+```go
+import (
+    "github.com/dotandev/hintents/internal/config"
+    "github.com/dotandev/hintents/internal/rpc"
+)
+
+// Create a custom network client
+customConfig := rpc.NetworkConfig{
+    Name:              "my-network",
+    HorizonURL:        "http://localhost:8000",
+    NetworkPassphrase: "My Custom Network",
+    SorobanRPCURL:     "http://localhost:8001",
+}
+
+client, err := rpc.NewCustomClient(customConfig)
+if err != nil {
+    log.Fatal(err)
+}
+
+// Use the client
+tx, err := client.GetTransaction(ctx, txHash)
+```
+
+### Save and load networks
+
+```go
+// Save a custom network
+err := config.AddCustomNetwork("local-dev", customConfig)
+if err != nil {
+    log.Fatal(err)
+}
+
+// Load a custom network
+networkConfig, err := config.GetCustomNetwork("local-dev")
+if err != nil {
+    log.Fatal(err)
+}
+
+// Create client from saved config
+client, err := rpc.NewCustomClient(*networkConfig)
+```
+
+## Troubleshooting
+
+### Connection issues
+
+Test your custom network connectivity:
+
+```bash
+# Test Horizon endpoint
+curl http://localhost:8000/
+
+# Verify transaction endpoint
+curl http://localhost:8000/transactions/<tx-hash>
+
+# Check Soroban RPC health
+curl -X POST http://localhost:8001 \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"getHealth"}'
+```
+
+<Accordion title="Network unreachable">
+  Ensure your network is running and accessible:
+  
+  ```bash
+  # Check if ports are open
+  netstat -an | grep 8000
+  netstat -an | grep 8001
+  
+  # Test connectivity
+  curl -v http://localhost:8000
+  ```
+</Accordion>
+
+<Accordion title="Permission errors">
+  Fix config file permissions:
+  
+  ```bash
+  chmod 600 ~/.erst/networks.json
+  chmod 700 ~/.erst
+  ```
+</Accordion>
+
+<Accordion title="Invalid passphrase">
+  Ensure your network passphrase matches exactly.
+  
+  Standard passphrases:
+  - **Mainnet**: `Public Global Stellar Network ; September 2015`
+  - **Testnet**: `Test SDF Network ; September 2015`
+  - **Local**: Check your network configuration
+  
+  The passphrase must match character-for-character, including spaces and punctuation.
+</Accordion>
+
+## Standard network passphrases
+
+For reference, here are the standard Stellar network passphrases:
+
+<CodeGroup>
+```bash Mainnet
+"Public Global Stellar Network ; September 2015"
+```
+
+```bash Testnet
+"Test SDF Network ; September 2015"
+```
+
+```bash Standalone
+"Standalone Network ; February 2017"
+```
+</CodeGroup>
+
+## Environment variable reference
+
+Configure custom networks using environment variables:
+
+<ParamField path="ERST_HORIZON_URL" type="string">
+  Horizon API endpoint URL.
+</ParamField>
+
+<ParamField path="ERST_NETWORK_PASSPHRASE" type="string">
+  Network passphrase for transaction signing.
+</ParamField>
+
+<ParamField path="ERST_RPC_URL" type="string">
+  Soroban RPC endpoint URL.
+</ParamField>
+
+Example:
+
+```bash
+export ERST_HORIZON_URL="http://localhost:8000"
+export ERST_NETWORK_PASSPHRASE="Local Development Network"
+export ERST_RPC_URL="http://localhost:8001"
+erst debug <tx-hash> --custom-network
+```
+
+## Future enhancements
+
+Planned improvements for custom network support:
+
+- Support for network passphrase encryption
+- Auto-detect local Stellar network
+- Network health checks before debugging
+- Import/export network configurations
+- Support for multiple Horizon endpoints (load balancing)
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Configuration overview" icon="gear" href="/configuration/overview">
+    Learn about all configuration methods
+  </Card>
+  <Card title="Environment variables" icon="terminal" href="/configuration/environment-variables">
+    Configure using environment variables
+  </Card>
+</CardGroup>
